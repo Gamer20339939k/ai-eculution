@@ -157,6 +157,7 @@ def wait_and_download_apk(
     print("Warte auf GitHub-Build...")
 
     run_id = None
+    run_url = None
     for _ in range(30):
         runs = gh_api(
             "GET",
@@ -166,6 +167,7 @@ def wait_and_download_apk(
         for r in runs.get("workflow_runs", []):
             if r.get("name") == "Build APK (Chaquopy)":
                 run_id = r.get("id")
+                run_url = r.get("html_url")
                 break
         if run_id:
             break
@@ -201,6 +203,28 @@ def wait_and_download_apk(
                 if build_start_ts and _to_epoch(r.get("created_at")) + 120 < build_start_ts:
                     continue
                 run_id = r.get("id")
+                run_url = r.get("html_url")
+                break
+            if run_id:
+                break
+            time.sleep(5)
+
+    # Zusätzlicher Fallback: allgemeine Push-Runs auf Branch suchen
+    if not run_id and branch:
+        print("Fallback 2: Suche neueste Push-Runs auf Branch...")
+        for _ in range(24):
+            runs = gh_api(
+                "GET",
+                f"https://api.github.com/repos/{repo}/actions/runs?branch={branch}&event=push&per_page=30",
+                token,
+            )
+            for r in runs.get("workflow_runs", []):
+                if r.get("name") != "Build APK (Chaquopy)":
+                    continue
+                if build_start_ts and _to_epoch(r.get("created_at")) + 180 < build_start_ts:
+                    continue
+                run_id = r.get("id")
+                run_url = r.get("html_url")
                 break
             if run_id:
                 break
@@ -210,6 +234,7 @@ def wait_and_download_apk(
         raise SystemExit(
             "Fehler: Kein passender Workflow-Run gefunden. "
             "Prüfe in GitHub Actions, ob Workflow-Datei/Token/Repo stimmen. "
+            f"Repo={repo}, Branch={branch or '-'}, SHA={head_sha[:8]}. "
             "Für workflow_dispatch braucht der Token Actions: Write."
         )
 
@@ -225,7 +250,7 @@ def wait_and_download_apk(
         if status == "completed":
             if conclusion != "success":
                 raise SystemExit(
-                    f"Fehler: Build fehlgeschlagen. Logs: https://github.com/{repo}/actions/runs/{run_id}"
+                    f"Fehler: Build fehlgeschlagen. Logs: {run_url or f'https://github.com/{repo}/actions/runs/{run_id}'}"
                 )
             break
         time.sleep(10)
