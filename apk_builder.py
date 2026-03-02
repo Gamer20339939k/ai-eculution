@@ -18,9 +18,6 @@ WORKFLOW_TEXT = """name: Build APK (Chaquopy)
 on:
   workflow_dispatch:
   push:
-    paths:
-      - "android-chaquopy/**"
-      - ".github/workflows/build-apk-chaquopy.yml"
 
 jobs:
   build:
