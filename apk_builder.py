@@ -177,14 +177,14 @@ def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -
     print(f"APK geladen nach: {out_dir}")
 
 
-def pick_python_file(root: Path) -> Path:
+def pick_python_file(root: Path, force_menu: bool = False) -> Path:
     files = sorted(
         [p for p in root.glob("*.py") if p.name not in {"apk_builder.py"}],
         key=lambda x: x.name.lower(),
     )
     if not files:
         raise SystemExit("Fehler: Keine .py-Datei im Projektordner gefunden.")
-    if len(files) == 1:
+    if len(files) == 1 and not force_menu:
         return files[0]
 
     print("Wähle die Python-Datei für die APK:")
@@ -212,10 +212,11 @@ def main() -> None:
     parser.add_argument("--repo", default=None, help="GitHub Repo: owner/name")
     parser.add_argument("--token", default=None, help="GitHub Token (oder GH_TOKEN/GITHUB_TOKEN)")
     parser.add_argument("--out-dir", default="bin", help="Zielordner für APK")
+    parser.add_argument("--choose", action="store_true", help="Datei-Auswahl immer anzeigen")
     args = parser.parse_args()
 
     root = Path(args.project_root).resolve()
-    src = Path(args.source_py).resolve() if args.source_py else pick_python_file(root)
+    src = Path(args.source_py).resolve() if args.source_py else pick_python_file(root, force_menu=args.choose)
 
     if not src.exists() or src.suffix.lower() != ".py":
         raise SystemExit("Fehler: source_py muss eine vorhandene .py-Datei sein.")
