@@ -373,6 +373,7 @@ def main() -> None:
     parser.add_argument("--commit-msg", default="Prepare APK build", help="Commit-Nachricht")
     parser.add_argument("--repo", default=None, help="GitHub Repo: owner/name")
     parser.add_argument("--token", default=None, help="GitHub Token (oder GH_TOKEN/GITHUB_TOKEN)")
+    parser.add_argument("--set-token", action="store_true", help="Gespeicherten Token jetzt neu eingeben")
     parser.add_argument("--out-dir", default="bin", help="Zielordner für APK")
     parser.add_argument("--choose", action="store_true", help="Datei-Auswahl immer anzeigen")
     args = parser.parse_args()
@@ -388,6 +389,11 @@ def main() -> None:
     if not args.token and cfg.get("token"):
         args.token = cfg.get("token")
 
+    if args.set_token:
+        new_token = input("Neuen GitHub Token eingeben (leer = behalten): ").strip()
+        if new_token:
+            args.token = new_token
+
     # Komfort-Modus: Start ohne Parameter (z. B. aus IDLE)
     if len(sys.argv) == 1:
         print("IDLE-Modus aktiv: Auswahl + Full-Auto")
@@ -400,6 +406,12 @@ def main() -> None:
             args.token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
         if not args.token:
             args.token = input("GitHub Token: ").strip()
+        else:
+            change = input("Token wechseln? (j/N): ").strip().lower()
+            if change in {"j", "ja", "y", "yes"}:
+                new_token = input("Neuen GitHub Token: ").strip()
+                if new_token:
+                    args.token = new_token
         if not args.git_exe:
             local_git = root / ".github" / "Git" / "cmd" / "git.exe"
             if local_git.exists():
