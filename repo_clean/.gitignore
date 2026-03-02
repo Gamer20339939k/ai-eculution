@@ -1,0 +1,28 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+
+# Buildozer / Kivy
+.buildozer/
+bin/
+
+# Android / Gradle
+.gradle/
+**/.gradle/
+**/build/
+android-chaquopy/local.properties
+android-chaquopy/.idea/
+*.iml
+
+# OS / Editor
+.DS_Store
+Thumbs.db
+.vscode/
+
+# Logs
+*.log
+.github/Git/
+github-upload/
+github-upload-2/

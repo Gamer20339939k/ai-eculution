@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Evo Creature AI</string>
+    <string name="run_epoch">Run Epoch</string>
+</resources>
+
