@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import subprocess
+import sys
 import time
 import urllib.request
 import zipfile
@@ -53,9 +54,27 @@ jobs:
           if-no-files-found: error
 """
 
+CONFIG_FILE = "apk_builder_config.json"
+
 
 def ensure(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
+
+
+def load_config(root: Path) -> dict:
+    cfg = root / CONFIG_FILE
+    if not cfg.exists():
+        return {}
+    try:
+        return json.loads(cfg.read_text(encoding="utf-8"))
+    except Exception:
+        return {}
+
+
+def save_config(root: Path, repo: str | None, git_exe: str | None) -> None:
+    cfg = root / CONFIG_FILE
+    data = {"repo": repo or "", "git_exe": git_exe or ""}
+    cfg.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
 def run(cmd: list[str], cwd: Path) -> int:
@@ -103,7 +122,7 @@ def gh_api(method: str, url: str, token: str, data: dict | None = None) -> dict:
     return json.loads(raw.decode("utf-8")) if raw else {}
 
 
-def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -> None:
+def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -> tuple[Path, Path]:
     print("Warte auf GitHub-Build...")
 
     run_id = None
@@ -174,7 +193,12 @@ def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(out_dir)
 
-    print(f"APK geladen nach: {out_dir}")
+    apk_files = sorted(out_dir.rglob("*.apk"), key=lambda p: p.stat().st_mtime, reverse=True)
+    if not apk_files:
+        raise SystemExit(f"Fehler: Download okay, aber keine .apk gefunden in: {out_dir}")
+
+    apk_path = apk_files[0].resolve()
+    return zip_path.resolve(), apk_path
 
 
 def pick_python_file(root: Path, force_menu: bool = False) -> Path:
@@ -216,6 +240,34 @@ def main() -> None:
     args = parser.parse_args()
 
     root = Path(args.project_root).resolve()
+    cfg = load_config(root)
+
+    # Repo/Git aus gespeicherter Konfiguration übernehmen
+    if not args.repo and cfg.get("repo"):
+        args.repo = cfg.get("repo")
+    if not args.git_exe and cfg.get("git_exe"):
+        args.git_exe = cfg.get("git_exe")
+
+    # Komfort-Modus: Start ohne Parameter (z. B. aus IDLE)
+    if len(sys.argv) == 1:
+        print("IDLE-Modus aktiv: Auswahl + Full-Auto")
+        args.choose = True
+        args.full_auto = True
+        args.auto_git = True
+        if not args.repo:
+            args.repo = input("GitHub Repo (owner/name): ").strip()
+        if not args.token:
+            args.token = os.getenv("GH_TOKEN") or os.getenv("GITHUB_TOKEN")
+        if not args.token:
+            args.token = input("GitHub Token: ").strip()
+        if not args.git_exe:
+            local_git = root / ".github" / "Git" / "cmd" / "git.exe"
+            if local_git.exists():
+                args.git_exe = str(local_git)
+
+    # Einmalige Angaben speichern (ohne Token)
+    save_config(root, args.repo, args.git_exe)
+
     src = Path(args.source_py).resolve() if args.source_py else pick_python_file(root, force_menu=args.choose)
 
     if not src.exists() or src.suffix.lower() != ".py":
@@ -288,7 +340,13 @@ def hello():
         raise SystemExit("Fehler: Kein Token. Nutze --token oder GH_TOKEN setzen.")
 
     head_sha = run_out([git, "rev-parse", "HEAD"], root)
-    wait_and_download_apk(repo, token, head_sha, root / args.out_dir)
+    zip_path, apk_path = wait_and_download_apk(repo, token, head_sha, root / args.out_dir)
+    print("")
+    print("===== ERFOLG =====")
+    print("APK-Erstellung erfolgreich.")
+    print(f"ZIP gespeichert unter: {zip_path}")
+    print(f"APK gespeichert unter: {apk_path}")
+    print("==================")
 
 
 if __name__ == "__main__":
