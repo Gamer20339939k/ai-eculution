@@ -20,7 +20,19 @@ class MainActivity : AppCompatActivity() {
         val output = findViewById<TextView>(R.id.outputText)
         val runButton = findViewById<Button>(R.id.runButton)
         val py = Python.getInstance()
-        val module = py.getModule("ai_leanr_walk")
+        val module = try {
+            py.getModule("game_core")
+        } catch (e0: Exception) {
+            try {
+                py.getModule("ai_lern_walk_android")
+            } catch (e1: Exception) {
+                try {
+                    py.getModule("ai_lern_walk_android_spezial")
+                } catch (e2: Exception) {
+                    py.getModule("ai_leanr_walk")
+                }
+            }
+        }
 
         output.text = module.callAttr("get_status").toString()
 

@@ -8,6 +8,7 @@ import sys
 import time
 import urllib.request
 import zipfile
+from datetime import datetime, timezone
 from pathlib import Path
 
 
@@ -57,23 +58,36 @@ jobs:
 CONFIG_FILE = "apk_builder_config.json"
 
 
+def get_config_path(root: Path) -> Path:
+    local = root / CONFIG_FILE
+    if os.name == "nt":
+        base = Path(os.getenv("APPDATA", str(Path.home())))
+        return base / "apk_builder" / CONFIG_FILE
+    return Path.home() / ".config" / "apk_builder" / CONFIG_FILE
+
+
 def ensure(path: Path) -> None:
     path.mkdir(parents=True, exist_ok=True)
 
 
 def load_config(root: Path) -> dict:
-    cfg = root / CONFIG_FILE
+    cfg = get_config_path(root)
     if not cfg.exists():
-        return {}
+        legacy = root / CONFIG_FILE
+        if legacy.exists():
+            cfg = legacy
+        else:
+            return {}
     try:
         return json.loads(cfg.read_text(encoding="utf-8"))
     except Exception:
         return {}
 
 
-def save_config(root: Path, repo: str | None, git_exe: str | None) -> None:
-    cfg = root / CONFIG_FILE
-    data = {"repo": repo or "", "git_exe": git_exe or ""}
+def save_config(root: Path, repo: str | None, git_exe: str | None, token: str | None) -> None:
+    cfg = get_config_path(root)
+    ensure(cfg.parent)
+    data = {"repo": repo or "", "git_exe": git_exe or "", "token": token or ""}
     cfg.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -122,7 +136,23 @@ def gh_api(method: str, url: str, token: str, data: dict | None = None) -> dict:
     return json.loads(raw.decode("utf-8")) if raw else {}
 
 
-def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -> tuple[Path, Path]:
+def _to_epoch(ts: str | None) -> float:
+    if not ts:
+        return 0.0
+    try:
+        return datetime.fromisoformat(ts.replace("Z", "+00:00")).astimezone(timezone.utc).timestamp()
+    except Exception:
+        return 0.0
+
+
+def wait_and_download_apk(
+    repo: str,
+    token: str,
+    head_sha: str,
+    out_dir: Path,
+    branch: str | None = None,
+    build_start_ts: float | None = None,
+) -> tuple[Path, Path]:
     print("Warte auf GitHub-Build...")
 
     run_id = None
@@ -140,8 +170,37 @@ def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -
             break
         time.sleep(5)
 
+    if not run_id and branch:
+        print("Kein Run per head_sha gefunden. Starte workflow_dispatch als Fallback...")
+        gh_api(
+            "POST",
+            f"https://api.github.com/repos/{repo}/actions/workflows/build-apk-chaquopy.yml/dispatches",
+            token,
+            data={"ref": branch},
+        )
+
+        for _ in range(30):
+            runs = gh_api(
+                "GET",
+                f"https://api.github.com/repos/{repo}/actions/workflows/build-apk-chaquopy.yml/runs?branch={branch}&per_page=20",
+                token,
+            )
+            for r in runs.get("workflow_runs", []):
+                if r.get("name") != "Build APK (Chaquopy)":
+                    continue
+                if build_start_ts and _to_epoch(r.get("created_at")) + 120 < build_start_ts:
+                    continue
+                run_id = r.get("id")
+                break
+            if run_id:
+                break
+            time.sleep(5)
+
     if not run_id:
-        raise SystemExit("Fehler: Kein passender Workflow-Run gefunden.")
+        raise SystemExit(
+            "Fehler: Kein passender Workflow-Run gefunden. "
+            "Prüfe in GitHub Actions, ob Workflow-Datei/Token/Repo stimmen."
+        )
 
     while True:
         run_info = gh_api(
@@ -202,10 +261,29 @@ def wait_and_download_apk(repo: str, token: str, head_sha: str, out_dir: Path) -
 
 
 def pick_python_file(root: Path, force_menu: bool = False) -> Path:
-    files = sorted(
-        [p for p in root.glob("*.py") if p.name not in {"apk_builder.py"}],
-        key=lambda x: x.name.lower(),
-    )
+    files: list[Path] = []
+
+    # 1) Windows-Version (Projektwurzel)
+    for p in sorted(root.glob("*.py"), key=lambda x: x.name.lower()):
+        if p.name == "apk_builder.py":
+            continue
+        files.append(p)
+
+    # 2) Android-Version (feste Spezial-Datei)
+    android_main = root / "android-chaquopy" / "app" / "src" / "main" / "python" / "ai_lern_walk_android.py"
+    if android_main.exists():
+        files.append(android_main)
+
+    # Duplikate entfernen, Reihenfolge behalten
+    uniq: list[Path] = []
+    seen: set[str] = set()
+    for p in files:
+        k = str(p.resolve()).lower()
+        if k in seen:
+            continue
+        seen.add(k)
+        uniq.append(p)
+    files = uniq
     if not files:
         raise SystemExit("Fehler: Keine .py-Datei im Projektordner gefunden.")
     if len(files) == 1 and not force_menu:
@@ -213,7 +291,7 @@ def pick_python_file(root: Path, force_menu: bool = False) -> Path:
 
     print("Wähle die Python-Datei für die APK:")
     for i, p in enumerate(files, 1):
-        print(f"{i}) {p.name}")
+        print(f"{i}) {p.relative_to(root)}")
 
     while True:
         c = input(f"Nummer eingeben (1-{len(files)}): ").strip()
@@ -247,6 +325,8 @@ def main() -> None:
         args.repo = cfg.get("repo")
     if not args.git_exe and cfg.get("git_exe"):
         args.git_exe = cfg.get("git_exe")
+    if not args.token and cfg.get("token"):
+        args.token = cfg.get("token")
 
     # Komfort-Modus: Start ohne Parameter (z. B. aus IDLE)
     if len(sys.argv) == 1:
@@ -265,10 +345,17 @@ def main() -> None:
             if local_git.exists():
                 args.git_exe = str(local_git)
 
-    # Einmalige Angaben speichern (ohne Token)
-    save_config(root, args.repo, args.git_exe)
+    # Einmalige Angaben speichern (inkl. Token, in AppData/.config außerhalb des Projekts)
+    save_config(root, args.repo, args.git_exe, args.token)
 
-    src = Path(args.source_py).resolve() if args.source_py else pick_python_file(root, force_menu=args.choose)
+    if args.source_py:
+        src = Path(args.source_py)
+        if not src.is_absolute():
+            src = (root / src).resolve()
+        else:
+            src = src.resolve()
+    else:
+        src = pick_python_file(root, force_menu=args.choose)
 
     if not src.exists() or src.suffix.lower() != ".py":
         raise SystemExit("Fehler: source_py muss eine vorhandene .py-Datei sein.")
@@ -285,6 +372,7 @@ def main() -> None:
     wrapper.write_text(
         f'''# Auto-generiert von apk_builder.py
 import importlib.util
+import traceback
 from pathlib import Path
 
 _module_path = Path(__file__).with_name("{args.target_name}")
@@ -295,6 +383,30 @@ _spec.loader.exec_module(app_logic)
 
 def hello():
     return "Python-Bridge aktiv"
+
+
+def get_status():
+    if hasattr(app_logic, "get_status"):
+        try:
+            return str(app_logic.get_status())
+        except Exception as e:
+            return f"get_status Fehler: {{e}}"
+    return f"Modul geladen: {{_module_path.name}}"
+
+
+def run_epoch():
+    if hasattr(app_logic, "run_epoch"):
+        try:
+            return str(app_logic.run_epoch())
+        except Exception:
+            return "run_epoch Fehler:\\n" + traceback.format_exc()
+    if hasattr(app_logic, "main"):
+        try:
+            result = app_logic.main()
+            return f"main() ausgeführt: {{result}}"
+        except Exception:
+            return "main() Fehler:\\n" + traceback.format_exc()
+    return "Keine run_epoch()/main() gefunden, aber Modul wurde geladen."
 ''',
         encoding="utf-8",
     )
@@ -340,7 +452,16 @@ def hello():
         raise SystemExit("Fehler: Kein Token. Nutze --token oder GH_TOKEN setzen.")
 
     head_sha = run_out([git, "rev-parse", "HEAD"], root)
-    zip_path, apk_path = wait_and_download_apk(repo, token, head_sha, root / args.out_dir)
+    branch = run_out([git, "rev-parse", "--abbrev-ref", "HEAD"], root)
+    build_start_ts = time.time()
+    zip_path, apk_path = wait_and_download_apk(
+        repo,
+        token,
+        head_sha,
+        root / args.out_dir,
+        branch=branch if branch != "HEAD" else None,
+        build_start_ts=build_start_ts,
+    )
     print("")
     print("===== ERFOLG =====")
     print("APK-Erstellung erfolgreich.")
