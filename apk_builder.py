@@ -6,6 +6,7 @@ import shutil
 import subprocess
 import sys
 import time
+import urllib.error
 import urllib.request
 import zipfile
 from datetime import datetime, timezone
@@ -237,6 +238,7 @@ def wait_and_download_apk(
     ensure(out_dir)
     zip_path = out_dir / "app-debug-apk.zip"
 
+    # Wichtig: Redirect-Ziel ohne Authorization laden (sonst 401 bei Blob/S3 möglich)
     req = urllib.request.Request(
         artifact["archive_download_url"],
         method="GET",
@@ -246,8 +248,31 @@ def wait_and_download_apk(
             "X-GitHub-Api-Version": "2022-11-28",
         },
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        zip_path.write_bytes(r.read())
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):  # type: ignore[override]
+            return None
+
+    opener = urllib.request.build_opener(_NoRedirect)
+    try:
+        with opener.open(req, timeout=120) as r:
+            zip_bytes = r.read()
+    except urllib.error.HTTPError as e:
+        if e.code in (301, 302, 303, 307, 308):
+            location = e.headers.get("Location")
+            if not location:
+                raise SystemExit("Fehler: Artifact-Redirect ohne Ziel-URL.")
+            with urllib.request.urlopen(location, timeout=120) as r2:
+                zip_bytes = r2.read()
+        elif e.code in (401, 403):
+            raise SystemExit(
+                "Fehler: Artifact-Download nicht erlaubt (401/403). "
+                "Token braucht für das Repo mindestens Actions: Read."
+            ) from e
+        else:
+            raise
+
+    zip_path.write_bytes(zip_bytes)
 
     with zipfile.ZipFile(zip_path, "r") as zf:
         zf.extractall(out_dir)
