@@ -172,13 +172,22 @@ def wait_and_download_apk(
         time.sleep(5)
 
     if not run_id and branch:
-        print("Kein Run per head_sha gefunden. Starte workflow_dispatch als Fallback...")
-        gh_api(
-            "POST",
-            f"https://api.github.com/repos/{repo}/actions/workflows/build-apk-chaquopy.yml/dispatches",
-            token,
-            data={"ref": branch},
-        )
+        print("Kein Run per head_sha gefunden. Fallback: Branch-Runs prüfen...")
+        dispatched = False
+        try:
+            gh_api(
+                "POST",
+                f"https://api.github.com/repos/{repo}/actions/workflows/build-apk-chaquopy.yml/dispatches",
+                token,
+                data={"ref": branch},
+            )
+            dispatched = True
+            print("workflow_dispatch gestartet.")
+        except urllib.error.HTTPError as e:
+            if e.code == 403:
+                print("Hinweis: Kein Recht für workflow_dispatch (403). Suche nur vorhandene Runs.")
+            else:
+                raise
 
         for _ in range(30):
             runs = gh_api(
@@ -200,7 +209,8 @@ def wait_and_download_apk(
     if not run_id:
         raise SystemExit(
             "Fehler: Kein passender Workflow-Run gefunden. "
-            "Prüfe in GitHub Actions, ob Workflow-Datei/Token/Repo stimmen."
+            "Prüfe in GitHub Actions, ob Workflow-Datei/Token/Repo stimmen. "
+            "Für workflow_dispatch braucht der Token Actions: Write."
         )
 
     while True:
