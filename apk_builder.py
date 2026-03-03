@@ -13,7 +13,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 
-WORKFLOW_TEXT = """name: Build APK (Chaquopy)
+CHAQUOPY_WORKFLOW_TEXT = """name: Build APK (Chaquopy)
 
 on:
   workflow_dispatch:
@@ -53,6 +53,60 @@ jobs:
           if-no-files-found: error
 """
 
+
+BEEWARE_WORKFLOW_TEXT = """name: Build APK (BeeWare)
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Python 3.11
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Briefcase
+        run: |
+          python -m pip install --upgrade pip
+          pip install briefcase toga
+
+      - name: Build Android APK (BeeWare)
+        run: |
+          cd beeware-app
+          briefcase create android --no-input
+          briefcase build android --no-input
+          briefcase package android --no-input
+
+      - name: Collect APK
+        run: |
+          mkdir -p dist-apk
+          find beeware-app -type f -name "*.apk" -exec cp {} dist-apk/ \\;
+          ls -la dist-apk
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-debug-apk
+          path: dist-apk/*.apk
+          if-no-files-found: error
+"""
+
 CONFIG_FILE = "apk_builder_config.json"
 
 
@@ -82,10 +136,12 @@ def load_config(root: Path) -> dict:
         return {}
 
 
-def save_config(root: Path, repo: str | None, git_exe: str | None, token: str | None) -> None:
+def save_config(
+    root: Path, repo: str | None, git_exe: str | None, token: str | None, engine: str | None
+) -> None:
     cfg = get_config_path(root)
     ensure(cfg.parent)
-    data = {"repo": repo or "", "git_exe": git_exe or "", "token": token or ""}
+    data = {"repo": repo or "", "git_exe": git_exe or "", "token": token or "", "engine": engine or ""}
     cfg.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")
 
 
@@ -147,6 +203,109 @@ def git_changed_paths(git: str, root: Path) -> list[str]:
     return out
 
 
+def workflow_meta(engine: str) -> tuple[str, str, str]:
+    eng = engine.lower().strip()
+    if eng == "beeware":
+        return ("build-apk-beeware.yml", "Build APK (BeeWare)", BEEWARE_WORKFLOW_TEXT)
+    return ("build-apk-chaquopy.yml", "Build APK (Chaquopy)", CHAQUOPY_WORKFLOW_TEXT)
+
+
+def ensure_beeware_scaffold(root: Path) -> list[Path]:
+    app_root = root / "beeware-app"
+    src_dir = app_root / "src" / "evocreatureai"
+    ensure(src_dir)
+
+    pyproject = app_root / "pyproject.toml"
+    pyproject.write_text(
+        """[build-system]
+requires = ["briefcase"]
+build-backend = "briefcase"
+
+[tool.briefcase]
+project_name = "Evo Creature AI"
+bundle = "com.thilo"
+version = "0.1.0"
+url = "https://github.com/Gamer20339939k/ai-eculution"
+license.file = "LICENSE"
+author = "Thilo"
+author_email = "thilo@example.com"
+
+[tool.briefcase.app.evocreatureai]
+formal_name = "Evo Creature AI"
+description = "Learn-Walk Simulation (BeeWare)"
+long_description = "Learn-Walk Simulation (BeeWare Android App)"
+sources = ["src/evocreatureai"]
+requires = ["toga>=0.4.8"]
+""",
+        encoding="utf-8",
+    )
+
+    readme = app_root / "README.md"
+    if not readme.exists():
+        readme.write_text("# BeeWare App\n", encoding="utf-8")
+
+    license_file = app_root / "LICENSE"
+    if not license_file.exists():
+        license_file.write_text("MIT\n", encoding="utf-8")
+
+    init_py = src_dir / "__init__.py"
+    if not init_py.exists():
+        init_py.write_text("", encoding="utf-8")
+
+    app_py = src_dir / "app.py"
+    app_py.write_text(
+        """from __future__ import annotations
+
+import traceback
+import toga
+from toga.style import Pack
+from toga.style.pack import COLUMN, ROW
+
+import app_logic
+
+
+class EvoApp(toga.App):
+    def startup(self) -> None:
+        self.output = toga.MultilineTextInput(readonly=True, style=Pack(flex=1, padding=8))
+        run_btn = toga.Button("Run Epoch", on_press=self.on_run, style=Pack(flex=1, padding=4))
+        reset_btn = toga.Button("Reset", on_press=self.on_reset, style=Pack(flex=1, padding=4))
+
+        btn_box = toga.Box(children=[run_btn, reset_btn], style=Pack(direction=ROW))
+        root = toga.Box(children=[self.output, btn_box], style=Pack(direction=COLUMN, padding=8))
+        self.main_window = toga.MainWindow(title=self.formal_name)
+        self.main_window.content = root
+        self.main_window.show()
+        self.output.value = self._safe_call("get_status")
+
+    def _safe_call(self, name: str) -> str:
+        try:
+            fn = getattr(app_logic, name, None)
+            if not callable(fn):
+                return f"{name} nicht gefunden."
+            return str(fn())
+        except Exception:
+            return traceback.format_exc()
+
+    def on_run(self, widget) -> None:
+        self.output.value = self._safe_call("run_epoch")
+
+    def on_reset(self, widget) -> None:
+        fn = getattr(app_logic, "reset_training", None)
+        if callable(fn):
+            self.output.value = str(fn())
+        else:
+            self.output.value = "reset_training nicht gefunden."
+
+
+def main():
+    return EvoApp()
+""",
+        encoding="utf-8",
+    )
+
+    return [pyproject, readme, license_file, init_py, app_py]
+
+
 def gh_api(method: str, url: str, token: str, data: dict | None = None) -> dict:
     body = None
     if data is not None:
@@ -176,10 +335,12 @@ def wait_and_download_apk(
     token: str,
     head_sha: str,
     out_dir: Path,
+    engine: str = "chaquopy",
     branch: str | None = None,
     build_start_ts: float | None = None,
 ) -> tuple[Path, Path]:
     print("Warte auf GitHub-Build...")
+    workflow_file, workflow_name, _ = workflow_meta(engine)
 
     run_id = None
     run_url = None
@@ -190,7 +351,7 @@ def wait_and_download_apk(
             token,
         )
         for r in runs.get("workflow_runs", []):
-            if r.get("name") == "Build APK (Chaquopy)":
+            if r.get("name") == workflow_name:
                 run_id = r.get("id")
                 run_url = r.get("html_url")
                 break
@@ -204,7 +365,7 @@ def wait_and_download_apk(
         try:
             gh_api(
                 "POST",
-                f"https://api.github.com/repos/{repo}/actions/workflows/build-apk-chaquopy.yml/dispatches",
+                f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/dispatches",
                 token,
                 data={"ref": branch},
             )
@@ -219,11 +380,11 @@ def wait_and_download_apk(
         for _ in range(30):
             runs = gh_api(
                 "GET",
-                f"https://api.github.com/repos/{repo}/actions/workflows/build-apk-chaquopy.yml/runs?branch={branch}&per_page=20",
+                f"https://api.github.com/repos/{repo}/actions/workflows/{workflow_file}/runs?branch={branch}&per_page=20",
                 token,
             )
             for r in runs.get("workflow_runs", []):
-                if r.get("name") != "Build APK (Chaquopy)":
+                if r.get("name") != workflow_name:
                     continue
                 if build_start_ts and _to_epoch(r.get("created_at")) + 120 < build_start_ts:
                     continue
@@ -244,7 +405,7 @@ def wait_and_download_apk(
                 token,
             )
             for r in runs.get("workflow_runs", []):
-                if r.get("name") != "Build APK (Chaquopy)":
+                if r.get("name") != workflow_name:
                     continue
                 if build_start_ts and _to_epoch(r.get("created_at")) + 180 < build_start_ts:
                     continue
@@ -387,9 +548,10 @@ def pick_python_file(root: Path, force_menu: bool = False) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Automatische APK-Erstellung via Chaquopy + GitHub Actions"
+        description="Automatische APK-Erstellung via Chaquopy/BeeWare + GitHub Actions"
     )
     parser.add_argument("source_py", nargs="?", help="Pfad zur .py-Datei")
+    parser.add_argument("--engine", default="chaquopy", choices=["chaquopy", "beeware"], help="Build-Engine")
     parser.add_argument("--project-root", default=".", help="Projektwurzel")
     parser.add_argument("--target-name", default="app_logic.py", help="Zieldatei im Android-Python-Ordner")
     parser.add_argument("--auto-git", action="store_true", help="git add/commit/push automatisch")
@@ -413,6 +575,8 @@ def main() -> None:
         args.git_exe = cfg.get("git_exe")
     if not args.token and cfg.get("token"):
         args.token = cfg.get("token")
+    if (not getattr(args, "engine", None) or args.engine == "chaquopy") and cfg.get("engine"):
+        args.engine = str(cfg.get("engine")).lower().strip() or args.engine
 
     if args.set_token:
         new_token = input("Neuen GitHub Token eingeben (leer = behalten): ").strip()
@@ -425,6 +589,8 @@ def main() -> None:
         args.choose = True
         args.full_auto = True
         args.auto_git = True
+        eng = input("Engine wählen (1=Chaquopy, 2=BeeWare) [1]: ").strip()
+        args.engine = "beeware" if eng == "2" else "chaquopy"
         if not args.repo:
             args.repo = input("GitHub Repo (owner/name): ").strip()
         if not args.token:
@@ -443,7 +609,7 @@ def main() -> None:
                 args.git_exe = str(local_git)
 
     # Einmalige Angaben speichern (inkl. Token, in AppData/.config außerhalb des Projekts)
-    save_config(root, args.repo, args.git_exe, args.token)
+    save_config(root, args.repo, args.git_exe, args.token, args.engine)
 
     if args.source_py:
         src = Path(args.source_py)
@@ -457,17 +623,23 @@ def main() -> None:
     if not src.exists() or src.suffix.lower() != ".py":
         raise SystemExit("Fehler: source_py muss eine vorhandene .py-Datei sein.")
 
-    py_dir = root / "android-chaquopy" / "app" / "src" / "main" / "python"
-    if not py_dir.exists():
-        raise SystemExit("Fehler: android-chaquopy Struktur fehlt.")
+    generated_paths: list[Path] = []
+    engine = args.engine.lower().strip()
+    workflow_file, _workflow_name, workflow_text = workflow_meta(engine)
 
-    ensure(py_dir)
-    target = py_dir / args.target_name
-    shutil.copy2(src, target)
+    if engine == "chaquopy":
+        py_dir = root / "android-chaquopy" / "app" / "src" / "main" / "python"
+        if not py_dir.exists():
+            raise SystemExit("Fehler: android-chaquopy Struktur fehlt.")
 
-    wrapper = py_dir / "game_core.py"
-    wrapper.write_text(
-        f'''# Auto-generiert von apk_builder.py
+        ensure(py_dir)
+        target = py_dir / args.target_name
+        shutil.copy2(src, target)
+        generated_paths.append(target)
+
+        wrapper = py_dir / "game_core.py"
+        wrapper.write_text(
+            f'''# Auto-generiert von apk_builder.py
 import importlib.util
 import traceback
 from pathlib import Path
@@ -505,16 +677,35 @@ def run_epoch():
             return "main() Fehler:\\n" + traceback.format_exc()
     return "Keine run_epoch()/main() gefunden, aber Modul wurde geladen."
 ''',
-        encoding="utf-8",
-    )
+            encoding="utf-8",
+        )
+        generated_paths.append(wrapper)
+    else:
+        scaffold = ensure_beeware_scaffold(root)
+        generated_paths.extend(scaffold)
+        target = root / "beeware-app" / "src" / "evocreatureai" / "app_logic.py"
+        ensure(target.parent)
+        shutil.copy2(src, target)
+        generated_paths.append(target)
 
-    workflow_path = root / ".github" / "workflows" / "build-apk-chaquopy.yml"
+    workflow_path = root / ".github" / "workflows" / workflow_file
     ensure(workflow_path.parent)
-    workflow_path.write_text(WORKFLOW_TEXT, encoding="utf-8")
+    workflow_path.write_text(workflow_text, encoding="utf-8")
+    generated_paths.append(workflow_path)
+    for other in ["build-apk-chaquopy.yml", "build-apk-beeware.yml"]:
+        if other == workflow_file:
+            continue
+        other_path = root / ".github" / "workflows" / other
+        if other_path.exists():
+            other_path.unlink()
+            generated_paths.append(other_path)
 
     print("Fertig:")
     print(f"- Python kopiert nach: {target}")
-    print(f"- Wrapper erstellt:   {wrapper}")
+    if engine == "chaquopy":
+        print(f"- Wrapper erstellt:   {wrapper}")
+    else:
+        print(f"- BeeWare-Projekt:    {root / 'beeware-app'}")
     print(f"- Workflow erstellt:  {workflow_path}")
 
     do_auto_git = args.auto_git or args.full_auto
@@ -527,7 +718,7 @@ def run_epoch():
         raise SystemExit("Fehler: git wurde nicht gefunden.")
 
     stage_paths: list[str] = []
-    for p in [target, wrapper, workflow_path]:
+    for p in generated_paths:
         rel = repo_rel(p, root)
         if rel:
             stage_paths.append(rel)
@@ -551,6 +742,9 @@ def run_epoch():
             stage_paths.append(rel)
             continue
         if rel.startswith("android-chaquopy/"):
+            stage_paths.append(rel)
+            continue
+        if rel.startswith("beeware-app/"):
             stage_paths.append(rel)
 
     # Duplikate entfernen, Reihenfolge behalten
@@ -588,6 +782,7 @@ def run_epoch():
         token,
         head_sha,
         root / args.out_dir,
+        engine=engine,
         branch=branch if branch != "HEAD" else None,
         build_start_ts=build_start_ts,
     )
