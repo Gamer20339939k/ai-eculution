@@ -133,9 +133,14 @@ def git_changed_paths(git: str, root: Path) -> list[str]:
         return []
     out: list[str] = []
     for line in raw.splitlines():
+        line = line.lstrip("\ufeff")
         if not line.strip():
             continue
-        entry = line[3:] if len(line) >= 4 else line
+        if len(line) >= 4 and line[2] == " ":
+            entry = line[3:]
+        else:
+            parts = line.split(maxsplit=1)
+            entry = parts[1] if len(parts) > 1 else ""
         if " -> " in entry:  # rename
             entry = entry.split(" -> ", 1)[1]
         out.append(entry.replace("\\", "/").strip())

@@ -1,4 +1,4 @@
-package com.thilo.evocreatureai
+﻿package com.thilo.evocreatureai
 
 import android.content.Context
 import android.graphics.Canvas
@@ -7,95 +7,88 @@ import android.graphics.Paint
 import android.util.AttributeSet
 import android.view.View
 import kotlin.math.max
-import kotlin.math.min
 
 class CreatureView @JvmOverloads constructor(
     context: Context,
     attrs: AttributeSet? = null
 ) : View(context, attrs) {
 
-    private val bodyPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#7dd3fc") }
-    private val limbPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.parseColor("#94a3b8")
-        strokeWidth = 8f
-    }
+    data class CreatureShape(
+        val color: Int,
+        val nodes: List<Pair<Float, Float>>,
+        val bones: List<Pair<Int, Int>>,
+        val leader: Boolean
+    )
+
+    data class FrameData(
+        val worldW: Float,
+        val worldH: Float,
+        val groundY: Float,
+        val creatures: List<CreatureShape>
+    )
+
+    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#0f172a") }
     private val groundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#6b4f2d") }
-
-    private var x = 200f
-    private var y = 260f
-    private var vx = 0f
-    private var vy = 0f
-    private var moveDir = 0f
-    private var jumpRequested = false
-
-    fun setMoveDir(dir: Float) {
-        moveDir = dir
+    private val bonePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        color = Color.parseColor("#94a3b8")
+        strokeWidth = 4f
+    }
+    private val nodePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.parseColor("#7dd3fc") }
+    private val leaderOutlinePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+        style = Paint.Style.STROKE
+        strokeWidth = 3f
+        color = Color.WHITE
     }
 
-    fun requestJump() {
-        jumpRequested = true
+    private var frame: FrameData = FrameData(
+        worldW = 1200f,
+        worldH = 760f,
+        groundY = 640f,
+        creatures = emptyList()
+    )
+
+    fun setFrame(data: FrameData) {
+        frame = data
+        invalidate()
     }
 
-    fun resetCreature() {
-        x = 200f
-        y = 260f
-        vx = 0f
-        vy = 0f
-    }
-
-    fun step(dt: Float = 1f / 60f) {
-        val h = height.toFloat().coerceAtLeast(1f)
-        val w = width.toFloat().coerceAtLeast(1f)
-        val floorY = h - 80f
-
-        val accel = 900f
-        val gravity = 1700f
-        val friction = 0.86f
-
-        vx += moveDir * accel * dt
-        vx = vx.coerceIn(-550f, 550f)
-        vy += gravity * dt
-
-        val bodyRadius = 28f
-        val onGround = y + bodyRadius >= floorY - 0.5f
-        if (jumpRequested && onGround) {
-            vy = -760f
-        }
-        jumpRequested = false
-
-        x += vx * dt
-        y += vy * dt
-
-        if (y + bodyRadius > floorY) {
-            y = floorY - bodyRadius
-            vy = 0f
-            vx *= friction
-        }
-
-        x = min(max(bodyRadius + 8f, x), w - bodyRadius - 8f)
+    fun clearFrame() {
+        frame = frame.copy(creatures = emptyList())
         invalidate()
     }
 
     override fun onDraw(canvas: Canvas) {
         super.onDraw(canvas)
-        val h = height.toFloat()
-        val w = width.toFloat()
-        val floorY = h - 80f
+        val w = width.toFloat().coerceAtLeast(1f)
+        val h = height.toFloat().coerceAtLeast(1f)
 
-        canvas.drawColor(Color.parseColor("#0f172a"))
-        canvas.drawRect(0f, floorY, w, h, groundPaint)
+        canvas.drawRect(0f, 0f, w, h, bgPaint)
 
-        val r = 28f
-        val hipLeftX = x - 14f
-        val hipRightX = x + 14f
-        val hipY = y + 16f
-        val footY = floorY
+        val sx = w / max(1f, frame.worldW)
+        val sy = h / max(1f, frame.worldH)
+        val gy = frame.groundY * sy
+        canvas.drawRect(0f, gy, w, h, groundPaint)
 
-        val phase = (System.currentTimeMillis() % 700L) / 700f * (Math.PI * 2.0)
-        val swing = (kotlin.math.sin(phase).toFloat()) * 18f * (if (kotlin.math.abs(vx) > 10f) 1f else 0.15f)
+        for (c in frame.creatures) {
+            nodePaint.color = c.color
 
-        canvas.drawLine(hipLeftX, hipY, hipLeftX - swing, footY, limbPaint)
-        canvas.drawLine(hipRightX, hipY, hipRightX + swing, footY, limbPaint)
-        canvas.drawCircle(x, y, r, bodyPaint)
+            for (b in c.bones) {
+                val a = b.first
+                val d = b.second
+                if (a !in c.nodes.indices || d !in c.nodes.indices) continue
+                val na = c.nodes[a]
+                val nb = c.nodes[d]
+                canvas.drawLine(na.first * sx, na.second * sy, nb.first * sx, nb.second * sy, bonePaint)
+            }
+
+            for (n in c.nodes) {
+                val px = n.first * sx
+                val py = n.second * sy
+                canvas.drawCircle(px, py, 6f, nodePaint)
+                if (c.leader) {
+                    canvas.drawCircle(px, py, 8f, leaderOutlinePaint)
+                }
+            }
+        }
     }
 }
