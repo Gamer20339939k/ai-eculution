@@ -11,16 +11,9 @@ from toga.style.pack import COLUMN, ROW
 class EvoApp(toga.App):
     def startup(self) -> None:
         self.logic = None
-        self.logic_import_error = ""
-        try:
-            import app_logic as _logic  # type: ignore
-            self.logic = _logic
-        except Exception:
-            self.logic_import_error = traceback.format_exc()
-
         self.auto_running = False
-        self.output = toga.MultilineTextInput(readonly=True, style=Pack(flex=1, padding=6))
-        self.visual = toga.MultilineTextInput(readonly=True, style=Pack(flex=1, padding=6))
+        self.output = toga.Label("Start...", style=Pack(flex=1, padding=6))
+        self.visual = toga.Label("Visualisierung: bereit", style=Pack(flex=1, padding=6))
         run_btn = toga.Button("Run Epoch", on_press=self.on_run, style=Pack(flex=1, padding=4))
         reset_btn = toga.Button("Reset", on_press=self.on_reset, style=Pack(flex=1, padding=4))
         step_btn = toga.Button("Visual Step", on_press=self.on_visual_step, style=Pack(flex=1, padding=4))
@@ -32,17 +25,13 @@ class EvoApp(toga.App):
         self.main_window = toga.MainWindow(title=self.formal_name)
         self.main_window.content = root
         self.main_window.show()
-        if self.logic is None:
-            self.output.value = "app_logic Import-Fehler:\n" + self.logic_import_error
-        else:
-            self.output.value = self._safe_call("get_status")
-        self._update_visual()
-        self.add_background_task(self._auto_loop)
+        self.output.text = "UI läuft. Logik wird bei Klick geladen."
 
     def _safe_call(self, name: str) -> str:
         try:
             if self.logic is None:
-                return "app_logic nicht geladen."
+                import app_logic as _logic  # type: ignore
+                self.logic = _logic
             fn = getattr(self.logic, name, None)
             if not callable(fn):
                 return f"{name} nicht gefunden."
@@ -51,15 +40,15 @@ class EvoApp(toga.App):
             return traceback.format_exc()
 
     def on_run(self, widget) -> None:
-        self.output.value = self._safe_call("run_epoch")
+        self.output.text = self._safe_call("run_epoch")
         self._update_visual()
 
     def on_reset(self, widget) -> None:
         fn = getattr(self.logic, "reset_training", None) if self.logic is not None else None
         if callable(fn):
-            self.output.value = str(fn())
+            self.output.text = str(fn())
         else:
-            self.output.value = "reset_training nicht gefunden."
+            self.output.text = "reset_training nicht gefunden."
         rv = getattr(self.logic, "reset_visualization", None) if self.logic is not None else None
         if callable(rv):
             try:
@@ -83,17 +72,17 @@ class EvoApp(toga.App):
 
     def _update_visual(self) -> None:
         if self.logic is None:
-            self.visual.value = "Visualisierung: app_logic nicht geladen."
+            self.visual.text = "Visualisierung: app_logic nicht geladen."
             return
         fn = getattr(self.logic, "get_visual_frame", None)
         if not callable(fn):
-            self.visual.value = "Visualisierung: get_visual_frame fehlt."
+            self.visual.text = "Visualisierung: get_visual_frame fehlt."
             return
         try:
             raw = str(fn())
             frame = json.loads(raw)
         except Exception:
-            self.visual.value = "Visualisierung Fehler:\n" + traceback.format_exc()
+            self.visual.text = "Visualisierung Fehler"
             return
 
         gen = frame.get("generation", "?")
@@ -108,7 +97,7 @@ class EvoApp(toga.App):
                 lines.append(f"{i:02d}: x={cx:7.1f} y={cy:7.1f} nodes={len(nodes)}{leader}")
             else:
                 lines.append(f"{i:02d}: keine Nodes{leader}")
-        self.visual.value = "\n".join(lines)
+        self.visual.text = " | ".join(lines[:4])
 
 
 def main():
