@@ -98,6 +98,13 @@ def run_out(cmd: list[str], cwd: Path) -> str:
     return subprocess.check_output(cmd, cwd=str(cwd), text=True).strip()
 
 
+def repo_rel(path: Path, root: Path) -> str | None:
+    try:
+        return str(path.resolve().relative_to(root.resolve())).replace("\\", "/")
+    except Exception:
+        return None
+
+
 def find_git(root: Path, git_exe: str | None) -> str | None:
     if git_exe:
         return git_exe
@@ -117,6 +124,22 @@ def parse_repo_from_origin(git: str, root: Path) -> str | None:
         return None
     m = re.search(r"github\.com[:/]([^/]+/[^/.]+)(?:\.git)?$", url)
     return m.group(1) if m else None
+
+
+def git_changed_paths(git: str, root: Path) -> list[str]:
+    try:
+        raw = run_out([git, "status", "--porcelain"], root)
+    except Exception:
+        return []
+    out: list[str] = []
+    for line in raw.splitlines():
+        if not line.strip():
+            continue
+        entry = line[3:] if len(line) >= 4 else line
+        if " -> " in entry:  # rename
+            entry = entry.split(" -> ", 1)[1]
+        out.append(entry.replace("\\", "/").strip())
+    return out
 
 
 def gh_api(method: str, url: str, token: str, data: dict | None = None) -> dict:
@@ -498,12 +521,44 @@ def run_epoch():
     if not git:
         raise SystemExit("Fehler: git wurde nicht gefunden.")
 
-    if run([git, "add", "."], root) != 0:
+    stage_paths: list[str] = []
+    for p in [target, wrapper, workflow_path]:
+        rel = repo_rel(p, root)
+        if rel:
+            stage_paths.append(rel)
+    src_rel = repo_rel(src, root)
+    if src_rel:
+        stage_paths.append(src_rel)
+
+    changed = git_changed_paths(git, root)
+    for rel in changed:
+        if not rel:
+            continue
+        low = rel.lower()
+        if "__pycache__" in low or low.endswith(".pyc"):
+            continue
+        if low.endswith((".apk", ".aab", ".zip", ".log", ".tmp", ".keystore", ".jks")):
+            continue
+        if rel == "apk_builder.py":
+            stage_paths.append(rel)
+            continue
+        if rel.startswith(".github/workflows/"):
+            stage_paths.append(rel)
+            continue
+        if rel.startswith("android-chaquopy/"):
+            stage_paths.append(rel)
+
+    # Duplikate entfernen, Reihenfolge behalten
+    stage_paths = list(dict.fromkeys(stage_paths))
+    if not stage_paths:
+        raise SystemExit("Fehler: Keine gültigen Repo-Dateien zum Stagen gefunden.")
+
+    if run([git, "add", "--", *stage_paths], root) != 0:
         raise SystemExit("Fehler: git add fehlgeschlagen.")
 
-    commit_rc = run([git, "commit", "-m", args.commit_msg], root)
+    commit_rc = run([git, "commit", "-m", args.commit_msg, "--", *stage_paths], root)
     if commit_rc != 0:
-        print("Hinweis: Kein neuer Commit (evtl. keine Änderungen).")
+        print("Hinweis: Kein neuer Commit in den Build-Dateien (evtl. keine Änderungen).")
 
     if run([git, "push"], root) != 0:
         raise SystemExit("Fehler: git push fehlgeschlagen.")
