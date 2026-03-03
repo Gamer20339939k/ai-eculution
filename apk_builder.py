@@ -263,11 +263,17 @@ import toga
 from toga.style import Pack
 from toga.style.pack import COLUMN, ROW
 
-import app_logic
-
 
 class EvoApp(toga.App):
     def startup(self) -> None:
+        self.logic = None
+        self.logic_import_error = ""
+        try:
+            import app_logic as _logic  # type: ignore
+            self.logic = _logic
+        except Exception:
+            self.logic_import_error = traceback.format_exc()
+
         self.auto_running = False
         self.output = toga.MultilineTextInput(readonly=True, style=Pack(flex=1, padding=6))
         self.visual = toga.MultilineTextInput(readonly=True, style=Pack(flex=1, padding=6))
@@ -282,13 +288,18 @@ class EvoApp(toga.App):
         self.main_window = toga.MainWindow(title=self.formal_name)
         self.main_window.content = root
         self.main_window.show()
-        self.output.value = self._safe_call("get_status")
+        if self.logic is None:
+            self.output.value = "app_logic Import-Fehler:\\n" + self.logic_import_error
+        else:
+            self.output.value = self._safe_call("get_status")
         self._update_visual()
         self.add_background_task(self._auto_loop)
 
     def _safe_call(self, name: str) -> str:
         try:
-            fn = getattr(app_logic, name, None)
+            if self.logic is None:
+                return "app_logic nicht geladen."
+            fn = getattr(self.logic, name, None)
             if not callable(fn):
                 return f"{name} nicht gefunden."
             return str(fn())
@@ -300,12 +311,12 @@ class EvoApp(toga.App):
         self._update_visual()
 
     def on_reset(self, widget) -> None:
-        fn = getattr(app_logic, "reset_training", None)
+        fn = getattr(self.logic, "reset_training", None) if self.logic is not None else None
         if callable(fn):
             self.output.value = str(fn())
         else:
             self.output.value = "reset_training nicht gefunden."
-        rv = getattr(app_logic, "reset_visualization", None)
+        rv = getattr(self.logic, "reset_visualization", None) if self.logic is not None else None
         if callable(rv):
             try:
                 rv()
@@ -327,7 +338,10 @@ class EvoApp(toga.App):
             await asyncio.sleep(0.12)
 
     def _update_visual(self) -> None:
-        fn = getattr(app_logic, "get_visual_frame", None)
+        if self.logic is None:
+            self.visual.value = "Visualisierung: app_logic nicht geladen."
+            return
+        fn = getattr(self.logic, "get_visual_frame", None)
         if not callable(fn):
             self.visual.value = "Visualisierung: get_visual_frame fehlt."
             return
