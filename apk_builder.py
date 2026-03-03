@@ -84,7 +84,7 @@ jobs:
       - name: Install Briefcase
         run: |
           python -m pip install --upgrade pip
-          pip install briefcase toga
+          pip install briefcase
 
       - name: Build Android APK (BeeWare)
         run: |
