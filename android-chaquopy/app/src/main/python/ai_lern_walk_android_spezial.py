@@ -55,7 +55,7 @@ def _load_state() -> None:
 
 def get_status() -> str:
     base = core.get_status()
-    return f"{base}\nModus: Android Spezial\nState: {STATE_FILE}"
+    return f"{base}\nModus: Android Spezial"
 
 
 def run_epoch() -> str:
@@ -123,6 +123,14 @@ def template_load(name: str = "android_slot") -> str:
 
 def template_list() -> str:
     return core.template_list()
+
+
+def adjust_config(key: str, delta: int) -> str:
+    return core.adjust_config(key, delta)
+
+
+def toggle_selection_mode() -> str:
+    return core.toggle_selection_mode()
 
 
 _load_state()

@@ -15,4 +15,6 @@
     template_save,
     template_load,
     template_list,
+    adjust_config,
+    toggle_selection_mode,
 )

@@ -174,6 +174,13 @@ class MainActivity : AppCompatActivity() {
         val saveButton = findViewById<Button>(R.id.saveButton)
         val loadButton = findViewById<Button>(R.id.loadButton)
         val clearButton = findViewById<Button>(R.id.clearButton)
+        val popDownButton = findViewById<Button>(R.id.popDownButton)
+        val popUpButton = findViewById<Button>(R.id.popUpButton)
+        val timeDownButton = findViewById<Button>(R.id.timeDownButton)
+        val timeUpButton = findViewById<Button>(R.id.timeUpButton)
+        val mutDownButton = findViewById<Button>(R.id.mutDownButton)
+        val mutUpButton = findViewById<Button>(R.id.mutUpButton)
+        val selectButton = findViewById<Button>(R.id.selectButton)
 
         val py = Python.getInstance()
         module = loadPythonModule(py)
@@ -183,7 +190,7 @@ class MainActivity : AppCompatActivity() {
 
         creatureView.setOnTouchListener { _, event ->
             if (!editMode) return@setOnTouchListener false
-            if (event.actionMasked == MotionEvent.ACTION_UP) {
+            if (event.actionMasked == MotionEvent.ACTION_DOWN) {
                 val idx = creatureView.findNodeAtScreen(event.x, event.y)
                 if (idx >= 0) {
                     if (selectedNodes.contains(idx)) selectedNodes.remove(idx) else {
@@ -206,7 +213,7 @@ class MainActivity : AppCompatActivity() {
                 }
                 true
             } else {
-                false
+                true
             }
         }
 
@@ -290,6 +297,14 @@ class MainActivity : AppCompatActivity() {
             output.text = callStatus("template_clear")
             refreshTemplate()
         }
+
+        popDownButton.setOnClickListener { output.text = callStatus("adjust_config", "population", -1) }
+        popUpButton.setOnClickListener { output.text = callStatus("adjust_config", "population", 1) }
+        timeDownButton.setOnClickListener { output.text = callStatus("adjust_config", "time", -1) }
+        timeUpButton.setOnClickListener { output.text = callStatus("adjust_config", "time", 1) }
+        mutDownButton.setOnClickListener { output.text = callStatus("adjust_config", "mutation", -1) }
+        mutUpButton.setOnClickListener { output.text = callStatus("adjust_config", "mutation", 1) }
+        selectButton.setOnClickListener { output.text = callStatus("toggle_selection_mode") }
     }
 
     override fun onResume() {

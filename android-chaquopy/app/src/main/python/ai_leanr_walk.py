@@ -1183,6 +1183,14 @@ class _AndroidBridge:
     def __init__(self) -> None:
         self.template = Template.default()
         self.storage_dir = self._storage_dir()
+        self.pop_size = POPULATION
+        self.elite_count = ELITE
+        self.survivor_ratio = SURVIVOR_RATIO
+        self.random_injection = RANDOM_INJECTION
+        self.gen_time = GEN_TIME
+        self.mut_rate = MUTATION_RATE
+        self.mut_std = MUTATION_STD
+        self.selection_mode = "top"  # top | fitness
         self._ensure_muscles()
         self.state = EvoState()
         self.population: list[Creature] = []
@@ -1219,9 +1227,11 @@ class _AndroidBridge:
             muscles = len(self.template.muscles)
         self.population = [
             Creature(self.template, Genome.random(muscles), '#7dd3fc')
-            for _ in range(POPULATION)
+            for _ in range(max(4, int(self.pop_size)))
         ]
         self.state = EvoState()
+        self.state.mut_rate = self.mut_rate
+        self.state.mut_std = self.mut_std
         self.visual_time = 0.0
 
     def template_payload(self) -> dict:
@@ -1364,7 +1374,7 @@ class _AndroidBridge:
         }
 
     def run_epoch(self) -> str:
-        steps = int(GEN_TIME / TIME_STEP)
+        steps = max(1, int(self.gen_time / TIME_STEP))
         t = 0.0
         for _ in range(steps):
             for c in self.population:
@@ -1380,30 +1390,46 @@ class _AndroidBridge:
         if self.state.generation <= 1:
             survivors = self.population[:]
         else:
-            keep = max(2, int(len(self.population) * SURVIVOR_RATIO))
+            keep = max(2, int(len(self.population) * self.survivor_ratio))
             survivors = self.population[:keep]
         self.state.survivors = len(survivors)
         self.state.culled = len(self.population) - len(survivors)
 
+        def pick_parent(pool: list[Creature]) -> Genome:
+            if self.selection_mode != "fitness":
+                return random.choice(pool).genome
+            scores = [max(0.0, c.score) + 1e-6 for c in pool]
+            total = sum(scores)
+            if total <= 0:
+                return random.choice(pool).genome
+            r = random.random() * total
+            acc = 0.0
+            for c, w in zip(pool, scores):
+                acc += w
+                if acc >= r:
+                    return c.genome
+            return pool[-1].genome
+
         new_pop: list[Creature] = []
-        for i in range(min(ELITE, len(survivors))):
+        for i in range(min(self.elite_count, len(survivors))):
             elite = survivors[i]
             clone = Creature(self.template, elite.genome, elite.color)
             new_pop.append(clone)
 
         muscles = len(self.template.muscles)
-        while len(new_pop) < POPULATION - RANDOM_INJECTION:
-            a = random.choice(survivors).genome
-            b = random.choice(survivors).genome
+        parent_pool = self.population if self.selection_mode == "fitness" else survivors
+        while len(new_pop) < self.pop_size - self.random_injection:
+            a = pick_parent(parent_pool)
+            b = pick_parent(parent_pool)
             child = mutate(crossover(a, b), self.state.mut_rate, self.state.mut_std)
             if not child.valid_for(muscles):
                 child = Genome.random(muscles)
             new_pop.append(Creature(self.template, child, '#7dd3fc'))
 
-        for _ in range(RANDOM_INJECTION):
+        for _ in range(self.random_injection):
             new_pop.append(Creature(self.template, Genome.random(muscles), '#7dd3fc'))
 
-        self.population = new_pop[:POPULATION]
+        self.population = new_pop[: self.pop_size]
         self.state.generation += 1
         self.state.elapsed = 0.0
 
@@ -1415,8 +1441,29 @@ class _AndroidBridge:
             f'Generation: {self.state.generation}\n'
             f'Best: {self.state.last_best:.2f}\n'
             f'Best ever: {self.state.best_ever:.2f}\n'
-            f'Survive/Cull: {self.state.survivors}/{self.state.culled}'
+            f'Survive/Cull: {self.state.survivors}/{self.state.culled}\n'
+            f'Pop={self.pop_size} Zeit={self.gen_time:.0f}s Mut={self.mut_rate:.2f}/{self.mut_std:.2f} Sel={self.selection_mode}'
         )
+
+    def adjust_config(self, key: str, delta: int) -> str:
+        d = int(delta)
+        if key == "population":
+            self.pop_size = int(max(4, min(128, self.pop_size + d * 4)))
+        elif key == "time":
+            self.gen_time = float(max(4.0, min(60.0, self.gen_time + d * 2.0)))
+        elif key == "mutation":
+            self.mut_rate = float(max(0.01, min(0.7, self.mut_rate + d * 0.02)))
+            self.mut_std = float(max(0.02, min(0.8, self.mut_std + d * 0.03)))
+        elif key == "survivor":
+            self.survivor_ratio = float(max(0.1, min(0.9, self.survivor_ratio + d * 0.05)))
+        self.state.mut_rate = self.mut_rate
+        self.state.mut_std = self.mut_std
+        self.reset_population()
+        return self.status()
+
+    def toggle_selection_mode(self) -> str:
+        self.selection_mode = "fitness" if self.selection_mode == "top" else "top"
+        return f"Selection: {self.selection_mode}"
 
 
 _ANDROID = _AndroidBridge()
@@ -1482,3 +1529,11 @@ def template_load(name: str = "android_slot") -> str:
 
 def template_list() -> str:
     return json.dumps(_ANDROID.template_list(), ensure_ascii=False)
+
+
+def adjust_config(key: str, delta: int) -> str:
+    return _ANDROID.adjust_config(str(key), int(delta))
+
+
+def toggle_selection_mode() -> str:
+    return _ANDROID.toggle_selection_mode()
