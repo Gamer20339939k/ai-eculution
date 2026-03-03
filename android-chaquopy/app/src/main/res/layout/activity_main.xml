@@ -3,22 +3,23 @@
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:background="#0f172a"
     android:padding="8dp">
 
-    <com.thilo.evocreatureai.CreatureView
-        android:id="@+id/creatureView"
+    <TextView
+        android:id="@+id/pathText"
         android:layout_width="match_parent"
-        android:layout_height="0dp"
-        android:layout_weight="1" />
+        android:layout_height="wrap_content"
+        android:text="Pfad"
+        android:textSize="14sp"
+        android:textStyle="bold" />
 
     <TextView
         android:id="@+id/outputText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="6dp"
+        android:paddingTop="4dp"
         android:paddingBottom="6dp"
-        android:textColor="#e5e7eb"
+        android:text="Bereit"
         android:textSize="13sp" />
 
     <LinearLayout
@@ -27,140 +28,38 @@
         android:orientation="horizontal">
 
         <Button
-            android:id="@+id/modeButton"
+            android:id="@+id/rootButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Modus: SIM" />
+            android:text="Root" />
 
         <Button
-            android:id="@+id/runButton"
+            android:id="@+id/upButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Run Epoch" />
+            android:text="Hoch" />
 
         <Button
-            android:id="@+id/resetButton"
+            android:id="@+id/refreshButton"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Reset" />
+            android:text="Scan" />
+
+        <Button
+            android:id="@+id/deleteButton"
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:text="Löschen" />
     </LinearLayout>
 
-    <LinearLayout
+    <ListView
+        android:id="@+id/listView"
         android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/boneButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Bone" />
-
-        <Button
-            android:id="@+id/muscleButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Muscle" />
-
-        <Button
-            android:id="@+id/autoMuscleButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Auto M" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/saveButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Save" />
-
-        <Button
-            android:id="@+id/loadButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Load" />
-
-        <Button
-            android:id="@+id/clearButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Clear" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/popDownButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Pop-" />
-
-        <Button
-            android:id="@+id/popUpButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Pop+" />
-
-        <Button
-            android:id="@+id/timeDownButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Zeit-" />
-
-        <Button
-            android:id="@+id/timeUpButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Zeit+" />
-    </LinearLayout>
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/mutDownButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Mut-" />
-
-        <Button
-            android:id="@+id/mutUpButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Mut+" />
-
-        <Button
-            android:id="@+id/selectButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Selection" />
-    </LinearLayout>
+        android:layout_height="0dp"
+        android:layout_weight="1" />
 
 </LinearLayout>
