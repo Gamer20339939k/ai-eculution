@@ -1,4 +1,4 @@
-﻿package com.thilo.evocreatureai
+package com.thilo.evocreatureai
 
 import android.Manifest
 import android.content.pm.PackageManager
