@@ -1,6 +1,9 @@
-﻿package com.thilo.evocreatureai
+package com.thilo.evocreatureai
 
+import android.Manifest
+import android.content.pm.PackageManager
 import android.graphics.Color
+import android.os.Build
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
@@ -8,6 +11,8 @@ import android.view.MotionEvent
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
@@ -15,6 +20,7 @@ import org.json.JSONArray
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
+    private val storagePermissionReq = 1207
     private val uiHandler = Handler(Looper.getMainLooper())
     private lateinit var creatureView: CreatureView
     private lateinit var output: TextView
@@ -158,6 +164,7 @@ class MainActivity : AppCompatActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
         AndroidBridge.init(applicationContext)
+        requestStoragePermissionsIfNeeded()
 
         if (!Python.isStarted()) {
             Python.start(AndroidPlatform(this))
@@ -318,4 +325,41 @@ class MainActivity : AppCompatActivity() {
         uiHandler.removeCallbacks(visualTick)
         super.onPause()
     }
+
+
+    private fun requestStoragePermissionsIfNeeded() {
+        if (Build.VERSION.SDK_INT >= 33) {
+            return
+        }
+        val needsRead = ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.READ_EXTERNAL_STORAGE
+        ) != PackageManager.PERMISSION_GRANTED
+
+        val needsWrite = Build.VERSION.SDK_INT <= 28 && ContextCompat.checkSelfPermission(
+            this,
+            Manifest.permission.WRITE_EXTERNAL_STORAGE
+        ) != PackageManager.PERMISSION_GRANTED
+
+        val list = mutableListOf<String>()
+        if (needsRead) list.add(Manifest.permission.READ_EXTERNAL_STORAGE)
+        if (needsWrite) list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+        if (list.isNotEmpty()) {
+            ActivityCompat.requestPermissions(this, list.toTypedArray(), storagePermissionReq)
+        }
+    }
+
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode != storagePermissionReq) return
+        val ok = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+        if (!ok) {
+            output.text = "Hinweis: Speicherrechte abgelehnt. Datei-Funktionen ggf. eingeschr?nkt."
+        }
+    }
+
 }
