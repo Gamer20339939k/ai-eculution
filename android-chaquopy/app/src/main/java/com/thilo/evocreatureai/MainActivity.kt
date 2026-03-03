@@ -9,6 +9,25 @@ import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
 
 class MainActivity : AppCompatActivity() {
+    private fun loadPythonModule(py: Python): PyObject {
+        val moduleCandidates = listOf(
+            "ai_lern_walk_android",
+            "ai_lern_walk_android_spezial",
+            "game_core",
+            "app_logic",
+            "ai_leanr_walk"
+        )
+        var lastError: Exception? = null
+        for (name in moduleCandidates) {
+            try {
+                return py.getModule(name)
+            } catch (e: Exception) {
+                lastError = e
+            }
+        }
+        throw RuntimeException("Kein Python-Modul ladbar", lastError)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
@@ -20,25 +39,21 @@ class MainActivity : AppCompatActivity() {
         val output = findViewById<TextView>(R.id.outputText)
         val runButton = findViewById<Button>(R.id.runButton)
         val py = Python.getInstance()
-        val module = try {
-            py.getModule("game_core")
-        } catch (e0: Exception) {
-            try {
-                py.getModule("ai_lern_walk_android")
-            } catch (e1: Exception) {
-                try {
-                    py.getModule("ai_lern_walk_android_spezial")
-                } catch (e2: Exception) {
-                    py.getModule("ai_leanr_walk")
-                }
-            }
+        val module = loadPythonModule(py)
+
+        output.text = try {
+            module.callAttr("get_status").toString()
+        } catch (e: Exception) {
+            "Fehler bei get_status: ${e.message}"
         }
 
-        output.text = module.callAttr("get_status").toString()
-
         runButton.setOnClickListener {
-            val result: PyObject = module.callAttr("run_epoch")
-            output.text = result.toString()
+            output.text = try {
+                val result: PyObject = module.callAttr("run_epoch")
+                result.toString()
+            } catch (e: Exception) {
+                "Fehler bei run_epoch: ${e.message}"
+            }
         }
     }
 }
