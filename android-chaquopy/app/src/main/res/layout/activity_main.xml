@@ -1,9 +1,10 @@
-<?xml version="1.0" encoding="utf-8"?>
+﻿<?xml version="1.0" encoding="utf-8"?>
 <LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
     android:orientation="vertical"
-    android:padding="12dp">
+    android:background="#0f172a"
+    android:padding="8dp">
 
     <com.thilo.evocreatureai.CreatureView
         android:id="@+id/creatureView"
@@ -15,37 +16,10 @@
         android:id="@+id/outputText"
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:paddingTop="8dp"
-        android:paddingBottom="8dp"
-        android:textSize="14sp" />
-
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:gravity="center"
-        android:orientation="horizontal">
-
-        <Button
-            android:id="@+id/leftButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="←" />
-
-        <Button
-            android:id="@+id/jumpButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="Jump" />
-
-        <Button
-            android:id="@+id/rightButton"
-            android:layout_width="0dp"
-            android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:text="→" />
-    </LinearLayout>
+        android:paddingTop="6dp"
+        android:paddingBottom="6dp"
+        android:textColor="#e5e7eb"
+        android:textSize="13sp" />
 
     <LinearLayout
         android:layout_width="match_parent"

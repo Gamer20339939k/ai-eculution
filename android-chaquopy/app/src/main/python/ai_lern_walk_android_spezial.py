@@ -1,4 +1,4 @@
-from __future__ import annotations
+﻿from __future__ import annotations
 
 import json
 from pathlib import Path
@@ -71,6 +71,14 @@ def reset_training() -> str:
     core._ANDROID.state.last_best = 0.0
     _save_state()
     return "Training zurückgesetzt (Android Spezial)."
+
+
+def get_visual_frame() -> str:
+    return core.get_visual_frame()
+
+
+def reset_visualization() -> str:
+    return core.reset_visualization()
 
 
 _load_state()

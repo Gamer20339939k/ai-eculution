@@ -1185,6 +1185,7 @@ class _AndroidBridge:
         self._ensure_muscles()
         self.state = EvoState()
         self.population: list[Creature] = []
+        self.visual_time = 0.0
         self.reset_population()
 
     def _ensure_muscles(self) -> None:
@@ -1206,6 +1207,44 @@ class _AndroidBridge:
             for _ in range(POPULATION)
         ]
         self.state = EvoState()
+        self.visual_time = 0.0
+
+    def reset_visualization(self) -> None:
+        for c in self.population:
+            c.reset()
+        self.visual_time = 0.0
+
+    def visual_frame(self, max_creatures: int = 10, sim_steps: int = 2) -> dict:
+        sim_steps = max(1, min(8, int(sim_steps)))
+        for _ in range(sim_steps):
+            for c in self.population:
+                if c.alive:
+                    c.update(self.visual_time, 1.0)
+            self.visual_time += TIME_STEP
+            self.state.elapsed += TIME_STEP
+
+        ranked = sorted(self.population, key=lambda c: c.score, reverse=True)
+        show = ranked[: max(1, int(max_creatures))]
+        leader = show[0] if show else None
+
+        creatures: list[dict] = []
+        bone_pairs = [[e.a, e.b] for e in self.template.bones]
+        for c in show:
+            creatures.append(
+                {
+                    "color": c.color,
+                    "leader": c is leader,
+                    "nodes": [[n.x, n.y] for n in c.nodes],
+                    "bones": bone_pairs,
+                }
+            )
+        return {
+            "w": CANVAS_WIDTH,
+            "h": CANVAS_HEIGHT,
+            "ground_y": GROUND_Y,
+            "generation": self.state.generation,
+            "creatures": creatures,
+        }
 
     def run_epoch(self) -> str:
         steps = int(GEN_TIME / TIME_STEP)
@@ -1272,3 +1311,12 @@ def get_status() -> str:
 
 def run_epoch() -> str:
     return _ANDROID.run_epoch()
+
+
+def get_visual_frame() -> str:
+    return json.dumps(_ANDROID.visual_frame(), ensure_ascii=False)
+
+
+def reset_visualization() -> str:
+    _ANDROID.reset_visualization()
+    return "Visualisierung zurückgesetzt."
