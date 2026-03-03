@@ -6,6 +6,7 @@ import android.os.Build
 import android.os.Bundle
 import android.widget.ArrayAdapter
 import android.widget.Button
+import android.widget.EditText
 import android.widget.ListView
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
@@ -23,12 +24,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var pathText: TextView
     private lateinit var outputText: TextView
     private lateinit var listView: ListView
+    private lateinit var searchEdit: EditText
+    private lateinit var sortButton: Button
     private lateinit var adapter: ArrayAdapter<String>
 
     private lateinit var module: PyObject
     private var entries = JSONArray()
     private var currentPath = ""
     private var selectedPath: String? = null
+    private var sortMode = "size"
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -42,6 +46,9 @@ class MainActivity : AppCompatActivity() {
         pathText = findViewById(R.id.pathText)
         outputText = findViewById(R.id.outputText)
         listView = findViewById(R.id.listView)
+        searchEdit = findViewById(R.id.searchEdit)
+        sortButton = findViewById(R.id.sortButton)
+
         val rootButton = findViewById<Button>(R.id.rootButton)
         val upButton = findViewById<Button>(R.id.upButton)
         val refreshButton = findViewById<Button>(R.id.refreshButton)
@@ -61,17 +68,17 @@ class MainActivity : AppCompatActivity() {
             currentPath = callString("go_up", currentPath)
             refresh()
         }
-        refreshButton.setOnClickListener {
-            refresh()
-        }
+        refreshButton.setOnClickListener { refresh() }
         deleteButton.setOnClickListener {
             val p = selectedPath
-            if (p.isNullOrBlank()) {
-                outputText.text = "Keine Datei gewählt"
-            } else {
-                outputText.text = callString("delete_entry", p)
-                refresh()
-            }
+            outputText.text = if (p.isNullOrBlank()) "Keine Datei gewählt" else callString("delete_entry", p)
+            refresh()
+        }
+
+        sortButton.setOnClickListener {
+            sortMode = if (sortMode == "size") "name" else "size"
+            sortButton.text = if (sortMode == "size") "Sort: Größe" else "Sort: Name"
+            refresh()
         }
 
         listView.setOnItemClickListener { _, _, position, _ ->
@@ -92,7 +99,8 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        val raw = callString("list_entries", currentPath)
+        val query = searchEdit.text?.toString() ?: ""
+        val raw = callString("list_entries", currentPath, query, sortMode)
         val obj = JSONObject(raw)
         currentPath = obj.optString("path", currentPath)
         entries = obj.optJSONArray("entries") ?: JSONArray()

@@ -18,11 +18,7 @@ def _human_size(num: int) -> str:
 
 
 def _root_path() -> Path:
-    candidates = [
-        Path("/storage/emulated/0"),
-        Path.home(),
-        Path.cwd(),
-    ]
+    candidates = [Path("/storage/emulated/0"), Path.home(), Path.cwd()]
     for p in candidates:
         try:
             if p.exists():
@@ -87,7 +83,6 @@ def _scan(path: Path) -> list[Entry]:
             out.append(Entry(child.name, str(child), is_dir, int(size)))
     except Exception:
         pass
-    out.sort(key=lambda e: e.size, reverse=True)
     return out
 
 
@@ -99,8 +94,7 @@ def set_root() -> str:
 
 def set_path(path: str) -> str:
     global _CURRENT
-    p = _safe_path(path)
-    _CURRENT = p
+    _CURRENT = _safe_path(path)
     return str(_CURRENT)
 
 
@@ -112,14 +106,25 @@ def go_up(path: str | None = None) -> str:
     return str(_CURRENT)
 
 
-def list_entries(path: str | None = None) -> str:
+def list_entries(path: str | None = None, query: str = "", sort_mode: str = "size") -> str:
     global _CURRENT
     p = _safe_path(path or _CURRENT)
     _CURRENT = p
     entries = _scan(p)
+
+    q = (query or "").strip().lower()
+    if q:
+        entries = [e for e in entries if q in e.name.lower()]
+
+    if sort_mode == "name":
+        entries.sort(key=lambda e: e.name.lower())
+    else:
+        entries.sort(key=lambda e: e.size, reverse=True)
+
+    total_size = sum(e.size for e in entries)
     payload = {
         "path": str(p),
-        "status": f"{len(entries)} Einträge",
+        "status": f"{len(entries)} Einträge | Gesamt: {_human_size(total_size)}",
         "entries": [
             {
                 "name": e.name,
