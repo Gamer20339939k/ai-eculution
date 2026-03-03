@@ -4,7 +4,10 @@ import json
 import math
 import random
 import re
-import tkinter as tk
+try:
+    import tkinter as tk
+except Exception:  # tkinter not available on Android/Chaquopy
+    tk = None
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -1161,6 +1164,8 @@ class App:
 
 
 def main() -> None:
+    if tk is None:
+        raise RuntimeError('tkinter ist nicht verf?gbar (z.B. Android/Chaquopy).')
     root = tk.Tk()
     App(root)
     root.mainloop()
@@ -1168,3 +1173,150 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+
+# ============================================================
+# Android/Chaquopy Bridge (headless simulation, no Tk UI)
+# ============================================================
+class _AndroidBridge:
+    def __init__(self) -> None:
+        self.template = Template.default()
+        self._ensure_muscles()
+        self.state = EvoState()
+        self.population: list[Creature] = []
+        self.visual_time = 0.0
+        self.reset_population()
+
+    def _ensure_muscles(self) -> None:
+        if not self.template.muscles and len(self.template.bones) >= 3:
+            self.template.muscles = [
+                EdgeDef(0, 4, 90.0),
+                EdgeDef(1, 3, 90.0),
+                EdgeDef(2, 5, 90.0),
+            ]
+            self.template.recompute_rests()
+
+    def reset_population(self) -> None:
+        muscles = len(self.template.muscles)
+        if muscles <= 0:
+            self._ensure_muscles()
+            muscles = len(self.template.muscles)
+        self.population = [
+            Creature(self.template, Genome.random(muscles), '#7dd3fc')
+            for _ in range(POPULATION)
+        ]
+        self.state = EvoState()
+        self.visual_time = 0.0
+
+    def reset_visualization(self) -> None:
+        for c in self.population:
+            c.reset()
+        self.visual_time = 0.0
+
+    def visual_frame(self, max_creatures: int = 10, sim_steps: int = 2) -> dict:
+        sim_steps = max(1, min(8, int(sim_steps)))
+        for _ in range(sim_steps):
+            for c in self.population:
+                if c.alive:
+                    c.update(self.visual_time, 1.0)
+            self.visual_time += TIME_STEP
+            self.state.elapsed += TIME_STEP
+
+        ranked = sorted(self.population, key=lambda c: c.score, reverse=True)
+        show = ranked[: max(1, int(max_creatures))]
+        leader = show[0] if show else None
+
+        creatures: list[dict] = []
+        bone_pairs = [[e.a, e.b] for e in self.template.bones]
+        for c in show:
+            creatures.append(
+                {
+                    "color": c.color,
+                    "leader": c is leader,
+                    "nodes": [[n.x, n.y] for n in c.nodes],
+                    "bones": bone_pairs,
+                }
+            )
+        return {
+            "w": CANVAS_WIDTH,
+            "h": CANVAS_HEIGHT,
+            "ground_y": GROUND_Y,
+            "generation": self.state.generation,
+            "creatures": creatures,
+        }
+
+    def run_epoch(self) -> str:
+        steps = int(GEN_TIME / TIME_STEP)
+        t = 0.0
+        for _ in range(steps):
+            for c in self.population:
+                if c.alive:
+                    c.update(t, 1.0)
+            t += TIME_STEP
+
+        self.population.sort(key=lambda c: c.score, reverse=True)
+        best = self.population[0].score if self.population else 0.0
+        self.state.last_best = best
+        self.state.best_ever = max(self.state.best_ever, best)
+
+        if self.state.generation <= 1:
+            survivors = self.population[:]
+        else:
+            keep = max(2, int(len(self.population) * SURVIVOR_RATIO))
+            survivors = self.population[:keep]
+        self.state.survivors = len(survivors)
+        self.state.culled = len(self.population) - len(survivors)
+
+        new_pop: list[Creature] = []
+        for i in range(min(ELITE, len(survivors))):
+            elite = survivors[i]
+            clone = Creature(self.template, elite.genome, elite.color)
+            new_pop.append(clone)
+
+        muscles = len(self.template.muscles)
+        while len(new_pop) < POPULATION - RANDOM_INJECTION:
+            a = random.choice(survivors).genome
+            b = random.choice(survivors).genome
+            child = mutate(crossover(a, b), self.state.mut_rate, self.state.mut_std)
+            if not child.valid_for(muscles):
+                child = Genome.random(muscles)
+            new_pop.append(Creature(self.template, child, '#7dd3fc'))
+
+        for _ in range(RANDOM_INJECTION):
+            new_pop.append(Creature(self.template, Genome.random(muscles), '#7dd3fc'))
+
+        self.population = new_pop[:POPULATION]
+        self.state.generation += 1
+        self.state.elapsed = 0.0
+
+        return self.status()
+
+    def status(self) -> str:
+        return (
+            f'Quelle: ai leanr walk.py\n'
+            f'Generation: {self.state.generation}\n'
+            f'Best: {self.state.last_best:.2f}\n'
+            f'Best ever: {self.state.best_ever:.2f}\n'
+            f'Survive/Cull: {self.state.survivors}/{self.state.culled}'
+        )
+
+
+_ANDROID = _AndroidBridge()
+
+
+def get_status() -> str:
+    return _ANDROID.status()
+
+
+def run_epoch() -> str:
+    return _ANDROID.run_epoch()
+
+
+def get_visual_frame() -> str:
+    return json.dumps(_ANDROID.visual_frame(), ensure_ascii=False)
+
+
+def reset_visualization() -> str:
+    _ANDROID.reset_visualization()
+    return "Visualisierung zurückgesetzt."
