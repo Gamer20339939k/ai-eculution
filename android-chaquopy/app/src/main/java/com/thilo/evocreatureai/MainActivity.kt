@@ -4,12 +4,14 @@ import android.graphics.Color
 import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
+import android.view.MotionEvent
 import android.widget.Button
 import android.widget.TextView
 import androidx.appcompat.app.AppCompatActivity
 import com.chaquo.python.PyObject
 import com.chaquo.python.Python
 import com.chaquo.python.android.AndroidPlatform
+import org.json.JSONArray
 import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
@@ -17,12 +19,15 @@ class MainActivity : AppCompatActivity() {
     private lateinit var creatureView: CreatureView
     private lateinit var output: TextView
     private lateinit var module: PyObject
+
     private var visualRunning = false
+    private var editMode = false
+    private val selectedNodes = linkedSetOf<Int>()
 
     private val visualTick = object : Runnable {
         override fun run() {
             if (!visualRunning) return
-            refreshVisualization()
+            if (editMode) refreshTemplate() else refreshVisualization()
             uiHandler.postDelayed(this, 90L)
         }
     }
@@ -59,34 +64,14 @@ class MainActivity : AppCompatActivity() {
         val worldW = obj.optDouble("w", 1200.0).toFloat()
         val worldH = obj.optDouble("h", 760.0).toFloat()
         val groundY = obj.optDouble("ground_y", 640.0).toFloat()
-
         val creaturesJson = obj.optJSONArray("creatures")
         val creatures = mutableListOf<CreatureView.CreatureShape>()
 
         if (creaturesJson != null) {
             for (i in 0 until creaturesJson.length()) {
                 val c = creaturesJson.optJSONObject(i) ?: continue
-                val nodesJson = c.optJSONArray("nodes")
-                val bonesJson = c.optJSONArray("bones")
-                val nodes = mutableListOf<Pair<Float, Float>>()
-                val bones = mutableListOf<Pair<Int, Int>>()
-
-                if (nodesJson != null) {
-                    for (j in 0 until nodesJson.length()) {
-                        val n = nodesJson.optJSONArray(j) ?: continue
-                        val x = n.optDouble(0, 0.0).toFloat()
-                        val y = n.optDouble(1, 0.0).toFloat()
-                        nodes.add(Pair(x, y))
-                    }
-                }
-
-                if (bonesJson != null) {
-                    for (j in 0 until bonesJson.length()) {
-                        val b = bonesJson.optJSONArray(j) ?: continue
-                        bones.add(Pair(b.optInt(0, 0), b.optInt(1, 0)))
-                    }
-                }
-
+                val nodes = parseNodes(c.optJSONArray("nodes"))
+                val bones = parseEdges(c.optJSONArray("bones"))
                 creatures.add(
                     CreatureView.CreatureShape(
                         color = parseColorSafe(c.optString("color", "#7dd3fc")),
@@ -97,8 +82,50 @@ class MainActivity : AppCompatActivity() {
                 )
             }
         }
-
         return CreatureView.FrameData(worldW, worldH, groundY, creatures)
+    }
+
+    private fun parseTemplate(rawJson: String): CreatureView.TemplateData {
+        val obj = JSONObject(rawJson)
+        val worldW = obj.optDouble("w", 1200.0).toFloat()
+        val worldH = obj.optDouble("h", 760.0).toFloat()
+        val groundY = obj.optDouble("ground_y", 640.0).toFloat()
+        val name = obj.optString("name", "Template")
+        val nodes = parseNodes(obj.optJSONArray("nodes"))
+        val bones = parseEdges(obj.optJSONArray("bones"))
+        val muscles = parseEdges(obj.optJSONArray("muscles"))
+        return CreatureView.TemplateData(worldW, worldH, groundY, name, nodes, bones, muscles, selectedNodes.toSet())
+    }
+
+    private fun parseNodes(arr: JSONArray?): List<Pair<Float, Float>> {
+        val nodes = mutableListOf<Pair<Float, Float>>()
+        if (arr != null) {
+            for (j in 0 until arr.length()) {
+                val n = arr.optJSONArray(j) ?: continue
+                nodes.add(Pair(n.optDouble(0, 0.0).toFloat(), n.optDouble(1, 0.0).toFloat()))
+            }
+        }
+        return nodes
+    }
+
+    private fun parseEdges(arr: JSONArray?): List<Pair<Int, Int>> {
+        val out = mutableListOf<Pair<Int, Int>>()
+        if (arr != null) {
+            for (j in 0 until arr.length()) {
+                val e = arr.optJSONArray(j) ?: continue
+                out.add(Pair(e.optInt(0, 0), e.optInt(1, 0)))
+            }
+        }
+        return out
+    }
+
+    private fun callStatus(name: String, vararg args: Any): String {
+        return try {
+            val r = if (args.isEmpty()) module.callAttr(name) else module.callAttr(name, *args)
+            r.toString()
+        } catch (e: Exception) {
+            "$name Fehler: ${e.message}"
+        }
     }
 
     private fun refreshVisualization() {
@@ -108,6 +135,23 @@ class MainActivity : AppCompatActivity() {
         } catch (e: Exception) {
             output.text = "Visual Fehler: ${e.message}"
         }
+    }
+
+    private fun refreshTemplate() {
+        try {
+            val raw = module.callAttr("get_template_frame").toString()
+            creatureView.setTemplate(parseTemplate(raw))
+        } catch (e: Exception) {
+            output.text = "Template Fehler: ${e.message}"
+        }
+    }
+
+    private fun setMode(edit: Boolean, modeButton: Button) {
+        editMode = edit
+        creatureView.setEditMode(edit)
+        selectedNodes.clear()
+        modeButton.text = if (editMode) "Modus: EDIT" else "Modus: SIM"
+        if (editMode) refreshTemplate() else refreshVisualization()
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -121,40 +165,131 @@ class MainActivity : AppCompatActivity() {
 
         output = findViewById(R.id.outputText)
         creatureView = findViewById(R.id.creatureView)
+        val modeButton = findViewById<Button>(R.id.modeButton)
         val runButton = findViewById<Button>(R.id.runButton)
         val resetButton = findViewById<Button>(R.id.resetButton)
+        val boneButton = findViewById<Button>(R.id.boneButton)
+        val muscleButton = findViewById<Button>(R.id.muscleButton)
+        val autoMuscleButton = findViewById<Button>(R.id.autoMuscleButton)
+        val saveButton = findViewById<Button>(R.id.saveButton)
+        val loadButton = findViewById<Button>(R.id.loadButton)
+        val clearButton = findViewById<Button>(R.id.clearButton)
 
         val py = Python.getInstance()
         module = loadPythonModule(py)
+        output.text = callStatus("get_status")
 
-        output.text = try {
-            module.callAttr("get_status").toString()
-        } catch (e: Exception) {
-            "Fehler bei get_status: ${e.message}"
+        setMode(false, modeButton)
+
+        creatureView.setOnTouchListener { _, event ->
+            if (!editMode) return@setOnTouchListener false
+            if (event.actionMasked == MotionEvent.ACTION_UP) {
+                val idx = creatureView.findNodeAtScreen(event.x, event.y)
+                if (idx >= 0) {
+                    if (selectedNodes.contains(idx)) selectedNodes.remove(idx) else {
+                        if (selectedNodes.size >= 2) {
+                            val it = selectedNodes.iterator()
+                            if (it.hasNext()) {
+                                it.next()
+                                it.remove()
+                            }
+                        }
+                        selectedNodes.add(idx)
+                    }
+                    output.text = "Node ausgewählt: ${selectedNodes.joinToString(",")}".ifBlank { "Auswahl leer" }
+                    refreshTemplate()
+                } else {
+                    val world = creatureView.screenToWorld(event.x, event.y)
+                    output.text = callStatus("template_add_node", world.first, world.second)
+                    selectedNodes.clear()
+                    refreshTemplate()
+                }
+                true
+            } else {
+                false
+            }
+        }
+
+        modeButton.setOnClickListener {
+            setMode(!editMode, modeButton)
+            output.text = if (editMode) "Edit aktiv: Tippen = Node setzen/auswählen" else callStatus("get_status")
         }
 
         runButton.setOnClickListener {
-            output.text = try {
-                val result: PyObject = module.callAttr("run_epoch")
+            if (editMode) {
+                output.text = "Im Edit-Modus: erst auf SIM wechseln"
+            } else {
+                output.text = callStatus("run_epoch")
                 refreshVisualization()
-                result.toString()
-            } catch (e: Exception) {
-                "Fehler bei run_epoch: ${e.message}"
             }
         }
 
         resetButton.setOnClickListener {
-            output.text = try {
-                module.callAttr("reset_training")
-                module.callAttr("reset_visualization")
-                refreshVisualization()
-                "Zurückgesetzt."
-            } catch (e: Exception) {
-                "Reset Fehler: ${e.message}"
+            output.text = if (editMode) {
+                selectedNodes.clear()
+                callStatus("template_default")
+            } else {
+                callStatus("reset_training")
             }
+            if (editMode) refreshTemplate() else refreshVisualization()
         }
 
-        refreshVisualization()
+        boneButton.setOnClickListener {
+            if (!editMode) {
+                output.text = "Bone nur im Edit-Modus"
+                return@setOnClickListener
+            }
+            if (selectedNodes.size < 2) {
+                output.text = "Wähle 2 Knoten"
+                return@setOnClickListener
+            }
+            val ids = selectedNodes.toList()
+            output.text = callStatus("template_add_bone", ids[0], ids[1])
+            refreshTemplate()
+        }
+
+        muscleButton.setOnClickListener {
+            if (!editMode) {
+                output.text = "Muscle nur im Edit-Modus"
+                return@setOnClickListener
+            }
+            if (selectedNodes.size < 2) {
+                output.text = "Wähle 2 Knoten"
+                return@setOnClickListener
+            }
+            val ids = selectedNodes.toList()
+            output.text = callStatus("template_add_muscle_by_nodes", ids[0], ids[1])
+            refreshTemplate()
+        }
+
+        autoMuscleButton.setOnClickListener {
+            if (!editMode) {
+                output.text = "Auto-Muscle nur im Edit-Modus"
+                return@setOnClickListener
+            }
+            output.text = callStatus("template_auto_muscles")
+            refreshTemplate()
+        }
+
+        saveButton.setOnClickListener {
+            output.text = callStatus("template_save", "android_slot")
+        }
+
+        loadButton.setOnClickListener {
+            selectedNodes.clear()
+            output.text = callStatus("template_load", "android_slot")
+            if (editMode) refreshTemplate() else refreshVisualization()
+        }
+
+        clearButton.setOnClickListener {
+            if (!editMode) {
+                output.text = "Clear nur im Edit-Modus"
+                return@setOnClickListener
+            }
+            selectedNodes.clear()
+            output.text = callStatus("template_clear")
+            refreshTemplate()
+        }
     }
 
     override fun onResume() {

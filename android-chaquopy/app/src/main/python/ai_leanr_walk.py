@@ -1182,11 +1182,26 @@ if __name__ == "__main__":
 class _AndroidBridge:
     def __init__(self) -> None:
         self.template = Template.default()
+        self.storage_dir = self._storage_dir()
         self._ensure_muscles()
         self.state = EvoState()
         self.population: list[Creature] = []
         self.visual_time = 0.0
         self.reset_population()
+
+    def _storage_dir(self) -> Path:
+        try:
+            from com.chaquo.python import Python  # type: ignore
+
+            app = Python.getPlatform().getApplication()
+            return Path(str(app.getFilesDir().getAbsolutePath())) / "saved_creatures"
+        except Exception:
+            return Path.cwd() / "saved_creatures"
+
+    def _template_file(self, name: str) -> Path:
+        safe = re.sub(r"[^a-zA-Z0-9._-]+", "_", name).strip("._-") or "template"
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        return self.storage_dir / f"{safe}.json"
 
     def _ensure_muscles(self) -> None:
         if not self.template.muscles and len(self.template.bones) >= 3:
@@ -1208,6 +1223,108 @@ class _AndroidBridge:
         ]
         self.state = EvoState()
         self.visual_time = 0.0
+
+    def template_payload(self) -> dict:
+        return {
+            "w": CANVAS_WIDTH,
+            "h": CANVAS_HEIGHT,
+            "ground_y": GROUND_Y,
+            "name": self.template.name,
+            "nodes": [[n.x, n.y] for n in self.template.nodes],
+            "bones": [[e.a, e.b] for e in self.template.bones],
+            "muscles": [[e.a, e.b] for e in self.template.muscles],
+        }
+
+    def template_add_node(self, x: float, y: float) -> str:
+        self.template.nodes.append(NodeDef(float(x), float(y)))
+        self.reset_population()
+        return f"Knoten hinzugefügt: {len(self.template.nodes)-1}"
+
+    def template_add_bone(self, a: int, b: int) -> str:
+        if a == b:
+            return "Bone Fehler: gleicher Knoten"
+        if min(a, b) < 0 or max(a, b) >= len(self.template.nodes):
+            return "Bone Fehler: Index außerhalb"
+        for e in self.template.bones:
+            if {e.a, e.b} == {a, b}:
+                return "Bone existiert bereits"
+        n1, n2 = self.template.nodes[a], self.template.nodes[b]
+        rest = max(6.0, math.hypot(n2.x - n1.x, n2.y - n1.y))
+        self.template.bones.append(EdgeDef(a, b, rest))
+        self.reset_population()
+        return f"Bone hinzugefügt: {a}-{b}"
+
+    def template_add_muscle(self, bi: int, bj: int) -> str:
+        if bi == bj:
+            return "Muscle Fehler: gleicher Bone"
+        if min(bi, bj) < 0 or max(bi, bj) >= len(self.template.bones):
+            return "Muscle Fehler: Bone-Index außerhalb"
+        for e in self.template.muscles:
+            if {e.a, e.b} == {bi, bj}:
+                return "Muscle existiert bereits"
+        self.template.muscles.append(EdgeDef(bi, bj, 20.0))
+        self.template.recompute_rests()
+        self.reset_population()
+        return f"Muscle hinzugefügt: Bone {bi}-{bj}"
+
+    def template_add_muscle_by_nodes(self, a: int, b: int) -> str:
+        if min(a, b) < 0 or max(a, b) >= len(self.template.nodes):
+            return "Muscle Fehler: Node-Index außerhalb"
+        ai = -1
+        bi = -1
+        for i, e in enumerate(self.template.bones):
+            if ai < 0 and (e.a == a or e.b == a):
+                ai = i
+            if bi < 0 and (e.a == b or e.b == b):
+                bi = i
+        if ai < 0 or bi < 0 or ai == bi:
+            return "Muscle Fehler: passende Bones fehlen"
+        return self.template_add_muscle(ai, bi)
+
+    def template_auto_muscles(self) -> str:
+        self.template.muscles = []
+        if len(self.template.bones) >= 3:
+            self.template.muscles.append(EdgeDef(0, min(1, len(self.template.bones)-1), 20.0))
+            self.template.muscles.append(EdgeDef(0, min(2, len(self.template.bones)-1), 20.0))
+            if len(self.template.bones) >= 4:
+                self.template.muscles.append(EdgeDef(1, 3, 20.0))
+        self.template.recompute_rests()
+        self.reset_population()
+        return f"Auto-Muscles: {len(self.template.muscles)}"
+
+    def template_clear(self) -> str:
+        self.template = Template("Neu", "#7dd3fc", [], [], [])
+        self.reset_population()
+        return "Template geleert"
+
+    def template_default(self) -> str:
+        self.template = Template.default()
+        self._ensure_muscles()
+        self.reset_population()
+        return "Starter geladen"
+
+    def template_save(self, name: str) -> str:
+        if not self.template.nodes:
+            return "Speichern Fehler: keine Knoten"
+        payload = self.template.to_dict()
+        payload["name"] = name or payload.get("name", "Template")
+        fp = self._template_file(name or payload["name"])
+        fp.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
+        return f"Gespeichert: {fp.name}"
+
+    def template_list(self) -> list[str]:
+        self.storage_dir.mkdir(parents=True, exist_ok=True)
+        return [p.stem for p in sorted(self.storage_dir.glob("*.json"))]
+
+    def template_load(self, name: str) -> str:
+        fp = self._template_file(name)
+        if not fp.exists():
+            return f"Load Fehler: {name} fehlt"
+        data = json.loads(fp.read_text(encoding="utf-8"))
+        t = Template.from_dict(data)
+        self.template = t
+        self.reset_population()
+        return f"Geladen: {name}"
 
     def reset_visualization(self) -> None:
         for c in self.population:
@@ -1320,3 +1437,48 @@ def get_visual_frame() -> str:
 def reset_visualization() -> str:
     _ANDROID.reset_visualization()
     return "Visualisierung zurückgesetzt."
+
+
+
+def get_template_frame() -> str:
+    return json.dumps(_ANDROID.template_payload(), ensure_ascii=False)
+
+
+def template_add_node(x: float, y: float) -> str:
+    return _ANDROID.template_add_node(float(x), float(y))
+
+
+def template_add_bone(a: int, b: int) -> str:
+    return _ANDROID.template_add_bone(int(a), int(b))
+
+
+def template_add_muscle(bi: int, bj: int) -> str:
+    return _ANDROID.template_add_muscle(int(bi), int(bj))
+
+
+def template_add_muscle_by_nodes(a: int, b: int) -> str:
+    return _ANDROID.template_add_muscle_by_nodes(int(a), int(b))
+
+
+def template_auto_muscles() -> str:
+    return _ANDROID.template_auto_muscles()
+
+
+def template_clear() -> str:
+    return _ANDROID.template_clear()
+
+
+def template_default() -> str:
+    return _ANDROID.template_default()
+
+
+def template_save(name: str = "android_slot") -> str:
+    return _ANDROID.template_save(name)
+
+
+def template_load(name: str = "android_slot") -> str:
+    return _ANDROID.template_load(name)
+
+
+def template_list() -> str:
+    return json.dumps(_ANDROID.template_list(), ensure_ascii=False)

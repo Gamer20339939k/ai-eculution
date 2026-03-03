@@ -257,31 +257,21 @@ requires = ["toga-core>=0.4.8"]
         """from __future__ import annotations
 
 import asyncio
-import json
 import traceback
 import toga
-from toga.style import Pack
-from toga.style.pack import COLUMN, ROW
 
 
 class EvoApp(toga.App):
     def startup(self) -> None:
         self.logic = None
-        self.auto_running = False
-        self.output = toga.Label("Start...", style=Pack(flex=1, padding=6))
-        self.visual = toga.Label("Visualisierung: bereit", style=Pack(flex=1, padding=6))
-        run_btn = toga.Button("Run Epoch", on_press=self.on_run, style=Pack(flex=1, padding=4))
-        reset_btn = toga.Button("Reset", on_press=self.on_reset, style=Pack(flex=1, padding=4))
-        step_btn = toga.Button("Visual Step", on_press=self.on_visual_step, style=Pack(flex=1, padding=4))
-        self.auto_btn = toga.Button("Auto: AUS", on_press=self.on_toggle_auto, style=Pack(flex=1, padding=4))
-
-        row1 = toga.Box(children=[run_btn, reset_btn], style=Pack(direction=ROW))
-        row2 = toga.Box(children=[step_btn, self.auto_btn], style=Pack(direction=ROW))
-        root = toga.Box(children=[self.output, self.visual, row1, row2], style=Pack(direction=COLUMN, padding=8))
+        self.output = toga.Label("Start...")
+        run_btn = toga.Button("Run Epoch", on_press=self.on_run)
+        reset_btn = toga.Button("Reset", on_press=self.on_reset)
+        root = toga.Box(children=[self.output, run_btn, reset_btn])
         self.main_window = toga.MainWindow(title=self.formal_name)
         self.main_window.content = root
         self.main_window.show()
-        self.output.text = "UI läuft. Logik wird bei Klick geladen."
+        self.output.text = "BeeWare gestartet."
 
     def _safe_call(self, name: str) -> str:
         try:
@@ -297,7 +287,6 @@ class EvoApp(toga.App):
 
     def on_run(self, widget) -> None:
         self.output.text = self._safe_call("run_epoch")
-        self._update_visual()
 
     def on_reset(self, widget) -> None:
         fn = getattr(self.logic, "reset_training", None) if self.logic is not None else None
@@ -305,55 +294,6 @@ class EvoApp(toga.App):
             self.output.text = str(fn())
         else:
             self.output.text = "reset_training nicht gefunden."
-        rv = getattr(self.logic, "reset_visualization", None) if self.logic is not None else None
-        if callable(rv):
-            try:
-                rv()
-            except Exception:
-                pass
-        self._update_visual()
-
-    def on_visual_step(self, widget) -> None:
-        self._update_visual()
-
-    def on_toggle_auto(self, widget) -> None:
-        self.auto_running = not self.auto_running
-        self.auto_btn.label = "Auto: AN" if self.auto_running else "Auto: AUS"
-
-    async def _auto_loop(self, widget) -> None:
-        while True:
-            if self.auto_running:
-                self._update_visual()
-            await asyncio.sleep(0.12)
-
-    def _update_visual(self) -> None:
-        if self.logic is None:
-            self.visual.text = "Visualisierung: app_logic nicht geladen."
-            return
-        fn = getattr(self.logic, "get_visual_frame", None)
-        if not callable(fn):
-            self.visual.text = "Visualisierung: get_visual_frame fehlt."
-            return
-        try:
-            raw = str(fn())
-            frame = json.loads(raw)
-        except Exception:
-            self.visual.text = "Visualisierung Fehler"
-            return
-
-        gen = frame.get("generation", "?")
-        creatures = frame.get("creatures", []) or []
-        lines = [f"Generation: {gen}", f"Kreaturen sichtbar: {len(creatures)}"]
-        for i, c in enumerate(creatures[:8], 1):
-            nodes = c.get("nodes", []) or []
-            leader = " *LEADER*" if c.get("leader") else ""
-            if nodes:
-                cx = sum(float(n[0]) for n in nodes) / len(nodes)
-                cy = sum(float(n[1]) for n in nodes) / len(nodes)
-                lines.append(f"{i:02d}: x={cx:7.1f} y={cy:7.1f} nodes={len(nodes)}{leader}")
-            else:
-                lines.append(f"{i:02d}: keine Nodes{leader}")
-        self.visual.text = " | ".join(lines[:4])
 
 
 def main():
@@ -607,10 +547,10 @@ def pick_python_file(root: Path, force_menu: bool = False) -> Path:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Automatische APK-Erstellung via Chaquopy/BeeWare + GitHub Actions"
+        description="Automatische APK-Erstellung via Chaquopy + GitHub Actions"
     )
     parser.add_argument("source_py", nargs="?", help="Pfad zur .py-Datei")
-    parser.add_argument("--engine", default=None, choices=["chaquopy", "beeware"], help="Build-Engine")
+    parser.add_argument("--engine", default="chaquopy", choices=["chaquopy"], help="Build-Engine")
     parser.add_argument("--project-root", default=".", help="Projektwurzel")
     parser.add_argument("--target-name", default="app_logic.py", help="Zieldatei im Android-Python-Ordner")
     parser.add_argument("--auto-git", action="store_true", help="git add/commit/push automatisch")
@@ -634,8 +574,8 @@ def main() -> None:
         args.git_exe = cfg.get("git_exe")
     if not args.token and cfg.get("token"):
         args.token = cfg.get("token")
-    if not getattr(args, "engine", None) and cfg.get("engine"):
-        args.engine = str(cfg.get("engine")).lower().strip() or args.engine
+    if (not getattr(args, "engine", None) or args.engine == "chaquopy") and cfg.get("engine"):
+        args.engine = "chaquopy"
 
     if args.set_token:
         new_token = input("Neuen GitHub Token eingeben (leer = behalten): ").strip()
@@ -648,8 +588,7 @@ def main() -> None:
         args.choose = True
         args.full_auto = True
         args.auto_git = True
-        eng = input("Engine wählen (1=Chaquopy, 2=BeeWare) [1]: ").strip()
-        args.engine = "beeware" if eng == "2" else "chaquopy"
+        args.engine = "chaquopy"
         if not args.repo:
             args.repo = input("GitHub Repo (owner/name): ").strip()
         if not args.token:
@@ -668,17 +607,7 @@ def main() -> None:
                 args.git_exe = str(local_git)
 
     if not args.engine:
-        default_engine = "chaquopy"
-        if cfg.get("engine") in {"chaquopy", "beeware"}:
-            default_engine = str(cfg.get("engine"))
-        prompt = f"Engine wählen (1=Chaquopy, 2=BeeWare) [{1 if default_engine == 'chaquopy' else 2}]: "
-        eng = input(prompt).strip()
-        if eng == "1":
-            args.engine = "chaquopy"
-        elif eng == "2":
-            args.engine = "beeware"
-        else:
-            args.engine = default_engine
+        args.engine = "chaquopy"
 
     # Einmalige Angaben speichern (inkl. Token, in AppData/.config außerhalb des Projekts)
     save_config(root, args.repo, args.git_exe, args.token, args.engine)

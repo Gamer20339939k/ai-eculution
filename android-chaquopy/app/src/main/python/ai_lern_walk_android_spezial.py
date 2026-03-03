@@ -81,4 +81,48 @@ def reset_visualization() -> str:
     return core.reset_visualization()
 
 
+def get_template_frame() -> str:
+    return core.get_template_frame()
+
+
+def template_add_node(x: float, y: float) -> str:
+    return core.template_add_node(x, y)
+
+
+def template_add_bone(a: int, b: int) -> str:
+    return core.template_add_bone(a, b)
+
+
+def template_add_muscle(bi: int, bj: int) -> str:
+    return core.template_add_muscle(bi, bj)
+
+
+def template_add_muscle_by_nodes(a: int, b: int) -> str:
+    return core.template_add_muscle_by_nodes(a, b)
+
+
+def template_auto_muscles() -> str:
+    return core.template_auto_muscles()
+
+
+def template_clear() -> str:
+    return core.template_clear()
+
+
+def template_default() -> str:
+    return core.template_default()
+
+
+def template_save(name: str = "android_slot") -> str:
+    return core.template_save(name)
+
+
+def template_load(name: str = "android_slot") -> str:
+    return core.template_load(name)
+
+
+def template_list() -> str:
+    return core.template_list()
+
+
 _load_state()
