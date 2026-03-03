@@ -551,7 +551,7 @@ def main() -> None:
         description="Automatische APK-Erstellung via Chaquopy/BeeWare + GitHub Actions"
     )
     parser.add_argument("source_py", nargs="?", help="Pfad zur .py-Datei")
-    parser.add_argument("--engine", default="chaquopy", choices=["chaquopy", "beeware"], help="Build-Engine")
+    parser.add_argument("--engine", default=None, choices=["chaquopy", "beeware"], help="Build-Engine")
     parser.add_argument("--project-root", default=".", help="Projektwurzel")
     parser.add_argument("--target-name", default="app_logic.py", help="Zieldatei im Android-Python-Ordner")
     parser.add_argument("--auto-git", action="store_true", help="git add/commit/push automatisch")
@@ -575,7 +575,7 @@ def main() -> None:
         args.git_exe = cfg.get("git_exe")
     if not args.token and cfg.get("token"):
         args.token = cfg.get("token")
-    if (not getattr(args, "engine", None) or args.engine == "chaquopy") and cfg.get("engine"):
+    if not getattr(args, "engine", None) and cfg.get("engine"):
         args.engine = str(cfg.get("engine")).lower().strip() or args.engine
 
     if args.set_token:
@@ -607,6 +607,19 @@ def main() -> None:
             local_git = root / ".github" / "Git" / "cmd" / "git.exe"
             if local_git.exists():
                 args.git_exe = str(local_git)
+
+    if not args.engine:
+        default_engine = "chaquopy"
+        if cfg.get("engine") in {"chaquopy", "beeware"}:
+            default_engine = str(cfg.get("engine"))
+        prompt = f"Engine wählen (1=Chaquopy, 2=BeeWare) [{1 if default_engine == 'chaquopy' else 2}]: "
+        eng = input(prompt).strip()
+        if eng == "1":
+            args.engine = "chaquopy"
+        elif eng == "2":
+            args.engine = "beeware"
+        else:
+            args.engine = default_engine
 
     # Einmalige Angaben speichern (inkl. Token, in AppData/.config außerhalb des Projekts)
     save_config(root, args.repo, args.git_exe, args.token, args.engine)
