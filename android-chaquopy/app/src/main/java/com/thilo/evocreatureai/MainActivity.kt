@@ -104,23 +104,29 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun refresh() {
-        val query = searchEdit.text?.toString() ?: ""
-        val raw = callString("list_entries", currentPath, query, sortMode)
-        val obj = JSONObject(raw)
-        currentPath = obj.optString("path", currentPath)
-        entries = obj.optJSONArray("entries") ?: JSONArray()
-        pathText.text = currentPath
+        try {
+            val query = searchEdit.text?.toString() ?: ""
+            val raw = callString("list_entries", currentPath, query, sortMode)
+            val obj = JSONObject(raw)
+            currentPath = obj.optString("path", currentPath)
+            entries = obj.optJSONArray("entries") ?: JSONArray()
+            pathText.text = currentPath
 
-        val lines = mutableListOf<String>()
-        for (i in 0 until entries.length()) {
-            val e = entries.optJSONObject(i) ?: continue
-            val icon = if (e.optBoolean("is_dir", false)) "📁" else "📄"
-            lines.add("$icon ${e.optString("name", "?")}  (${e.optString("size_h", "-")})")
+            val lines = mutableListOf<String>()
+            for (i in 0 until entries.length()) {
+                val e = entries.optJSONObject(i) ?: continue
+                val icon = if (e.optBoolean("is_dir", false)) "📁" else "📄"
+                lines.add("$icon ${e.optString("name", "?")}  (${e.optString("size_h", "-")})")
+            }
+            adapter.clear()
+            adapter.addAll(lines)
+            adapter.notifyDataSetChanged()
+            outputText.text = obj.optString("status", "OK")
+        } catch (e: Exception) {
+            adapter.clear()
+            adapter.notifyDataSetChanged()
+            outputText.text = "Refresh-Fehler: ${e.message}"
         }
-        adapter.clear()
-        adapter.addAll(lines)
-        adapter.notifyDataSetChanged()
-        outputText.text = obj.optString("status", "OK")
     }
 
     private fun callString(name: String, vararg args: Any): String {

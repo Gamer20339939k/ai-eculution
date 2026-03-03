@@ -46,25 +46,6 @@ def _safe_path(path: str | Path) -> Path:
     return p
 
 
-def _dir_size_quick(path: Path, max_entries: int = 1200) -> int:
-    total = 0
-    count = 0
-    try:
-        for root, dirs, files in os.walk(path):
-            for f in files:
-                fp = Path(root) / f
-                try:
-                    total += fp.stat().st_size
-                except Exception:
-                    pass
-                count += 1
-                if count >= max_entries:
-                    return total
-    except Exception:
-        pass
-    return total
-
-
 def _scan(path: Path) -> list[Entry]:
     out: list[Entry] = []
     try:
@@ -74,7 +55,8 @@ def _scan(path: Path) -> list[Entry]:
             except Exception:
                 continue
             if is_dir:
-                size = _dir_size_quick(child)
+                # Android: keine teure Rekursion im UI-Thread
+                size = 0
             else:
                 try:
                     size = child.stat().st_size
