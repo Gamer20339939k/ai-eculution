@@ -235,7 +235,7 @@ formal_name = "Evo Creature AI"
 description = "Learn-Walk Simulation (BeeWare)"
 long_description = "Learn-Walk Simulation (BeeWare Android App)"
 sources = ["src/evocreatureai"]
-requires = ["toga>=0.4.8"]
+requires = ["toga-core>=0.4.8"]
 """,
         encoding="utf-8",
     )
