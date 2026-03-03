@@ -57,8 +57,13 @@ class MainActivity : AppCompatActivity() {
         adapter = ArrayAdapter(this, android.R.layout.simple_list_item_1, mutableListOf())
         listView.adapter = adapter
 
-        val py = Python.getInstance()
-        module = py.getModule("storage_manager_android")
+        try {
+            val py = Python.getInstance()
+            module = py.getModule("storage_manager_android")
+        } catch (e: Exception) {
+            outputText.text = "Python-Startfehler: ${e.message}"
+            return
+        }
 
         rootButton.setOnClickListener {
             currentPath = callString("set_root")
