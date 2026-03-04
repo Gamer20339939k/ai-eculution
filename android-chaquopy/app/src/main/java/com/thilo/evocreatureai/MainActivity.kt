@@ -35,7 +35,7 @@ class MainActivity : AppCompatActivity() {
     private lateinit var module: PyObject
     private var entries = JSONArray()
     private var currentPath = ""
-    private var selectedPath: String? = null
+    private val selectedPaths = linkedSetOf<String>()
     private var sortMode = "size"
     private var lastRenderKey = ""
     private var appReady = false
@@ -55,9 +55,9 @@ class MainActivity : AppCompatActivity() {
         refreshButton = findViewById(R.id.refreshButton)
         deleteButton = findViewById(R.id.deleteButton)
 
-        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_activated_1, mutableListOf())
+        adapter = ArrayAdapter(this, android.R.layout.simple_list_item_multiple_choice, mutableListOf())
         listView.adapter = adapter
-        listView.choiceMode = ListView.CHOICE_MODE_SINGLE
+        listView.choiceMode = ListView.CHOICE_MODE_MULTIPLE
 
         setControlsEnabled(false)
         outputText.text = "Starte App..."
@@ -87,13 +87,13 @@ class MainActivity : AppCompatActivity() {
 
     private fun bindUiActions() {
         rootButton.setOnClickListener {
-            selectedPath = null
+            selectedPaths.clear()
             currentPath = callString("set_root")
             refresh(forceRender = true)
         }
 
         upButton.setOnClickListener {
-            selectedPath = null
+            selectedPaths.clear()
             currentPath = callString("go_up", currentPath)
             refresh(forceRender = true)
         }
@@ -103,14 +103,24 @@ class MainActivity : AppCompatActivity() {
         }
 
         deleteButton.setOnClickListener {
-            val p = selectedPath
-            if (p.isNullOrBlank()) {
-                outputText.text = "Langes Tippen waehlt Datei oder Ordner zum Loeschen"
+            if (selectedPaths.isEmpty()) {
+                outputText.text = "Datei oder Ordner markieren (lang tippen)"
                 return@setOnClickListener
             }
 
-            outputText.text = callString("delete_entry", p)
-            selectedPath = null
+            var ok = 0
+            var fail = 0
+            val copy = selectedPaths.toList()
+            for (p in copy) {
+                val result = callString("delete_entry", p)
+                if (result.startsWith("Loeschen fehlgeschlagen")) {
+                    fail += 1
+                } else {
+                    ok += 1
+                }
+            }
+            outputText.text = "Geloescht: $ok | Fehler: $fail"
+            selectedPaths.clear()
             refresh(forceRender = true)
         }
 
@@ -126,14 +136,14 @@ class MainActivity : AppCompatActivity() {
             val isDir = item.optBoolean("is_dir", false)
 
             if (isDir) {
-                selectedPath = null
+                selectedPaths.clear()
                 listView.clearChoices()
                 currentPath = callString("set_path", path)
                 refresh(forceRender = true)
             } else {
-                selectedPath = path
-                listView.setItemChecked(position, true)
-                outputText.text = "Ausgewaehlt: ${item.optString("name", "?")}"
+                toggleSelection(path)
+                listView.setItemChecked(position, selectedPaths.contains(path))
+                outputText.text = "Markiert: ${selectedPaths.size}"
             }
         }
 
@@ -142,10 +152,18 @@ class MainActivity : AppCompatActivity() {
             val path = item.optString("path", "")
             if (path.isBlank()) return@setOnItemLongClickListener false
 
-            selectedPath = path
-            listView.setItemChecked(position, true)
-            outputText.text = "Zum Loeschen markiert: ${item.optString("name", "?")}"
+            toggleSelection(path)
+            listView.setItemChecked(position, selectedPaths.contains(path))
+            outputText.text = "Zum Loeschen markiert: ${selectedPaths.size}"
             true
+        }
+    }
+
+    private fun toggleSelection(path: String) {
+        if (selectedPaths.contains(path)) {
+            selectedPaths.remove(path)
+        } else {
+            selectedPaths.add(path)
         }
     }
 
@@ -187,28 +205,28 @@ class MainActivity : AppCompatActivity() {
             entries = obj.optJSONArray("entries") ?: JSONArray()
 
             val lines = mutableListOf<String>()
-            var selectedIndex = -1
+            val visiblePaths = hashSetOf<String>()
             for (i in 0 until entries.length()) {
                 val e = entries.optJSONObject(i) ?: continue
                 val icon = if (e.optBoolean("is_dir", false)) "[DIR]" else "[FILE]"
                 val name = e.optString("name", "?")
                 val sizeH = e.optString("size_h", "-")
                 lines.add("$icon $name  ($sizeH)")
-
-                if (selectedPath != null && selectedPath == e.optString("path", "")) {
-                    selectedIndex = i
-                }
+                visiblePaths.add(e.optString("path", ""))
             }
 
             adapter.clear()
             adapter.addAll(lines)
             adapter.notifyDataSetChanged()
 
+            selectedPaths.retainAll(visiblePaths)
             listView.clearChoices()
-            if (selectedIndex >= 0) {
-                listView.setItemChecked(selectedIndex, true)
-            } else {
-                selectedPath = null
+            for (i in 0 until entries.length()) {
+                val e = entries.optJSONObject(i) ?: continue
+                val path = e.optString("path", "")
+                if (selectedPaths.contains(path)) {
+                    listView.setItemChecked(i, true)
+                }
             }
 
             outputText.text = obj.optString("status", "OK")
