@@ -32,7 +32,7 @@ class Entry:
     name: str
     path: str
     is_dir: bool
-    size: int
+    size: int  # -1 = unbekannt
 
 
 _CURRENT = _root_path()
@@ -70,12 +70,12 @@ def _scan(path: Path) -> tuple[list[Entry], str, bool]:
                 continue
 
             if is_dir:
-                size = 0
+                size = -1
             else:
                 try:
                     size = child.stat().st_size
                 except Exception:
-                    size = 0
+                    size = -1
             out.append(Entry(child.name, str(child), is_dir, int(size)))
     except Exception:
         pass
@@ -126,7 +126,7 @@ def list_entries(path: str | None = None, query: str = "", sort_mode: str = "siz
     else:
         entries.sort(key=lambda e: e.size, reverse=True)
 
-    total_size = sum(e.size for e in entries)
+    total_size = sum(e.size for e in entries if e.size >= 0)
     payload = {
         "path": str(p),
         "revision": revision,
@@ -138,7 +138,7 @@ def list_entries(path: str | None = None, query: str = "", sort_mode: str = "siz
                 "path": e.path,
                 "is_dir": e.is_dir,
                 "size": e.size,
-                "size_h": _human_size(e.size),
+                "size_h": ("Ordner" if e.is_dir else (_human_size(e.size) if e.size >= 0 else "?")),
             }
             for e in entries
         ],
