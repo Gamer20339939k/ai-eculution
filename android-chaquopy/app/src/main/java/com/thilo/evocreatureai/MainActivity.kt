@@ -1,9 +1,13 @@
 package com.thilo.evocreatureai
 
 import android.Manifest
+import android.content.Intent
 import android.content.pm.PackageManager
+import android.net.Uri
 import android.os.Build
 import android.os.Bundle
+import android.os.Environment
+import android.provider.Settings
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -83,6 +87,11 @@ class MainActivity : AppCompatActivity() {
                 }
             }
         }.start()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        requestStoragePermissionsIfNeeded()
     }
 
     private fun bindUiActions() {
@@ -251,7 +260,31 @@ class MainActivity : AppCompatActivity() {
     }
 
     private fun requestStoragePermissionsIfNeeded() {
-        if (Build.VERSION.SDK_INT >= 33) return
+        if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
+            outputText.text = "Bitte Dateizugriff erlauben"
+            val intent = Intent(
+                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            startActivity(intent)
+            return
+        }
+
+        if (Build.VERSION.SDK_INT >= 33) {
+            val mediaPermissions = arrayOf(
+                Manifest.permission.READ_MEDIA_IMAGES,
+                Manifest.permission.READ_MEDIA_VIDEO,
+                Manifest.permission.READ_MEDIA_AUDIO
+            )
+            val missing = mediaPermissions.filter {
+                ContextCompat.checkSelfPermission(this, it) != PackageManager.PERMISSION_GRANTED
+            }
+            if (missing.isNotEmpty()) {
+                ActivityCompat.requestPermissions(this, missing.toTypedArray(), storagePermissionReq)
+            }
+            return
+        }
+
         val needsRead = ContextCompat.checkSelfPermission(
             this,
             Manifest.permission.READ_EXTERNAL_STORAGE
