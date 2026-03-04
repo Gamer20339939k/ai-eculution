@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import shutil
 from dataclasses import dataclass
 from pathlib import Path
@@ -36,7 +37,6 @@ class Entry:
 
 
 _CURRENT = _root_path()
-_SCAN_CACHE: dict[str, dict[str, object]] = {}
 
 
 def _safe_path(path: str | Path) -> Path:
@@ -46,21 +46,7 @@ def _safe_path(path: str | Path) -> Path:
     return p
 
 
-def _dir_revision(path: Path) -> str:
-    try:
-        st = path.stat()
-        return f"{int(getattr(st, 'st_mtime_ns', 0))}:{int(getattr(st, 'st_ctime_ns', 0))}"
-    except Exception:
-        return "0:0"
-
-
-def _scan(path: Path) -> tuple[list[Entry], str, bool]:
-    key = str(path)
-    revision = _dir_revision(path)
-    cached = _SCAN_CACHE.get(key)
-    if cached and cached.get("revision") == revision:
-        return list(cached.get("entries", [])), revision, True
-
+def _scan(path: Path) -> list[Entry]:
     out: list[Entry] = []
     try:
         for child in path.iterdir():
@@ -68,8 +54,8 @@ def _scan(path: Path) -> tuple[list[Entry], str, bool]:
                 is_dir = child.is_dir()
             except Exception:
                 continue
-
             if is_dir:
+                # Android: keine teure Rekursion im UI-Thread
                 size = 0
             else:
                 try:
@@ -79,16 +65,7 @@ def _scan(path: Path) -> tuple[list[Entry], str, bool]:
             out.append(Entry(child.name, str(child), is_dir, int(size)))
     except Exception:
         pass
-
-    _SCAN_CACHE[key] = {"revision": revision, "entries": out}
-    return out, revision, False
-
-
-def _invalidate_for(path: Path) -> None:
-    key = str(path)
-    parent = str(path.parent)
-    _SCAN_CACHE.pop(key, None)
-    _SCAN_CACHE.pop(parent, None)
+    return out
 
 
 def set_root() -> str:
@@ -115,7 +92,7 @@ def list_entries(path: str | None = None, query: str = "", sort_mode: str = "siz
     global _CURRENT
     p = _safe_path(path or _CURRENT)
     _CURRENT = p
-    entries, revision, cache_hit = _scan(p)
+    entries = _scan(p)
 
     q = (query or "").strip().lower()
     if q:
@@ -129,9 +106,7 @@ def list_entries(path: str | None = None, query: str = "", sort_mode: str = "siz
     total_size = sum(e.size for e in entries)
     payload = {
         "path": str(p),
-        "revision": revision,
-        "cache_hit": cache_hit,
-        "status": f"{len(entries)} Eintraege | Gesamt: {_human_size(total_size)}",
+        "status": f"{len(entries)} Einträge | Gesamt: {_human_size(total_size)}",
         "entries": [
             {
                 "name": e.name,
@@ -151,11 +126,8 @@ def delete_entry(path: str) -> str:
     try:
         if p.is_dir():
             shutil.rmtree(p)
-            _invalidate_for(p)
-            return f"Ordner geloescht: {p.name}"
-
+            return f"Ordner gelöscht: {p.name}"
         p.unlink(missing_ok=True)
-        _invalidate_for(p)
-        return f"Datei geloescht: {p.name}"
+        return f"Datei gelöscht: {p.name}"
     except Exception as e:
-        return f"Loeschen fehlgeschlagen: {e}"
+        return f"Löschen fehlgeschlagen: {e}"

@@ -3,7 +3,7 @@ import importlib.util
 import traceback
 from pathlib import Path
 
-_module_path = Path(__file__).with_name("app_logic.py")
+_module_path = Path(__file__).with_name("app_logic_build.py")
 _spec = importlib.util.spec_from_file_location("app_logic", _module_path)
 app_logic = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(app_logic)
