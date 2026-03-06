@@ -8,6 +8,8 @@ import android.os.Build
 import android.os.Bundle
 import android.os.Environment
 import android.provider.Settings
+import android.text.Editable
+import android.text.TextWatcher
 import android.widget.ArrayAdapter
 import android.widget.Button
 import android.widget.EditText
@@ -24,6 +26,7 @@ import org.json.JSONObject
 
 class MainActivity : AppCompatActivity() {
     private val storagePermissionReq = 1207
+    private var askedAllFilesPermission = false
 
     private lateinit var pathText: TextView
     private lateinit var outputText: TextView
@@ -47,7 +50,6 @@ class MainActivity : AppCompatActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_main)
-        requestStoragePermissionsIfNeeded()
 
         pathText = findViewById(R.id.pathText)
         outputText = findViewById(R.id.outputText)
@@ -63,8 +65,9 @@ class MainActivity : AppCompatActivity() {
         listView.adapter = adapter
         listView.choiceMode = ListView.CHOICE_MODE_MULTIPLE
 
+        requestStoragePermissionsIfNeeded()
         setControlsEnabled(false)
-        outputText.text = "Starte App..."
+        setStatus("Starte App...")
         pathText.text = "Bitte warten"
 
         Thread {
@@ -83,7 +86,7 @@ class MainActivity : AppCompatActivity() {
                 }
             } catch (e: Exception) {
                 runOnUiThread {
-                    outputText.text = "Python-Startfehler: ${e.message}"
+                    setStatus("Python-Startfehler: ${e.message}")
                 }
             }
         }.start()
@@ -138,6 +141,14 @@ class MainActivity : AppCompatActivity() {
             sortButton.text = if (sortMode == "size") "Sort: Groesse" else "Sort: Name"
             refresh(forceRender = true)
         }
+
+        searchEdit.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, start: Int, count: Int, after: Int) = Unit
+            override fun onTextChanged(s: CharSequence?, start: Int, before: Int, count: Int) = Unit
+            override fun afterTextChanged(s: Editable?) {
+                refresh(forceRender = true)
+            }
+        })
 
         listView.setOnItemClickListener { _, _, position, _ ->
             val item = entries.optJSONObject(position) ?: return@setOnItemClickListener
@@ -261,12 +272,15 @@ class MainActivity : AppCompatActivity() {
 
     private fun requestStoragePermissionsIfNeeded() {
         if (Build.VERSION.SDK_INT >= 30 && !Environment.isExternalStorageManager()) {
-            outputText.text = "Bitte Dateizugriff erlauben"
-            val intent = Intent(
-                Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
-                Uri.parse("package:$packageName")
-            )
-            startActivity(intent)
+            setStatus("Bitte Dateizugriff erlauben")
+            if (!askedAllFilesPermission) {
+                askedAllFilesPermission = true
+                val intent = Intent(
+                    Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+                    Uri.parse("package:$packageName")
+                )
+                startActivity(intent)
+            }
             return
         }
 
@@ -300,6 +314,12 @@ class MainActivity : AppCompatActivity() {
         if (needsWrite) list.add(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         if (list.isNotEmpty()) {
             ActivityCompat.requestPermissions(this, list.toTypedArray(), storagePermissionReq)
+        }
+    }
+
+    private fun setStatus(text: String) {
+        if (this::outputText.isInitialized) {
+            outputText.text = text
         }
     }
 }

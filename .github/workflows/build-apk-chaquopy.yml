@@ -3,6 +3,10 @@ name: Build APK (Chaquopy)
 on:
   workflow_dispatch:
   push:
+    branches:
+      - main
+      - master
+  pull_request:
 
 jobs:
   build:
@@ -25,14 +29,30 @@ jobs:
         with:
           gradle-version: "8.10.2"
 
+      - name: Python syntax check
+        run: |
+          python3 -m py_compile android-chaquopy/app/src/main/python/*.py
+
       - name: Build debug APK
         run: |
           cd android-chaquopy
           gradle assembleDebug --stacktrace
 
-      - name: Upload APK
+      - name: Build release APK
+        run: |
+          cd android-chaquopy
+          gradle assembleRelease --stacktrace
+
+      - name: Upload debug APK
         uses: actions/upload-artifact@v4
         with:
           name: app-debug-apk
           path: android-chaquopy/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Upload release APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: app-release-apk
+          path: android-chaquopy/app/build/outputs/apk/release/*.apk
           if-no-files-found: error

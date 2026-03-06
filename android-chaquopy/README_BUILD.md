@@ -1,21 +1,33 @@
 # Build (Windows, ohne WSL)
 
-## 1) In Android Studio öffnen
-- Ordner `android-chaquopy` öffnen.
-- Sync abwarten.
+## Voraussetzungen
+- Android Studio
+- JDK 17
 
-## 2) Falls nach Java gefragt wird
-- In Android Studio JDK 17 wählen.
+## Debug APK bauen
+1. Ordner `android-chaquopy` in Android Studio öffnen.
+2. Projekt synchronisieren lassen.
+3. Menü: **Build -> Build APK(s)**  
+   oder im Terminal:
+   ```bash
+   gradlew.bat assembleDebug
+   ```
 
-## 3) APK bauen
-- Menü: **Build -> Build APK(s)**
-- oder Terminal im Ordner `android-chaquopy`:
-  - `gradlew.bat assembleDebug`
+Ergebnis:
+- `app/build/outputs/apk/debug/app-debug.apk`
 
-## 4) Ergebnis
-- APK: `app/build/outputs/apk/debug/app-debug.apk`
+## Release APK bauen
+Im Terminal:
+```bash
+gradlew.bat assembleRelease
+```
 
-## Hinweis
-- Das ist die Chaquopy-Version.
-- Python läuft jetzt aus **`ai leanr walk.py`** (portiert nach `app/src/main/python/ai_leanr_walk.py`).
-- Die Tkinter-Desktop-UI wurde durch eine Android-UI ersetzt.
+Ergebnis:
+- `app/build/outputs/apk/release/app-release-unsigned.apk`  
+  (ohne Signatur)
+
+## CI Build
+GitHub Actions Workflow:
+- `.github/workflows/build-apk-chaquopy.yml`
+- Baut Debug + Release APK
+- Prüft vorher Python-Dateien per `py_compile`

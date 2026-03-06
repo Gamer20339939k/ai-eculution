@@ -35,14 +35,14 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:textColor="#111827"
-            android:hint="Suche..." />
+            android:hint="Suche..."
+            android:textColor="#111827" />
 
         <Button
             android:id="@+id/sortButton"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:text="Sort: Größe" />
+            android:text="Sort: Groesse" />
     </LinearLayout>
 
     <LinearLayout
@@ -76,14 +76,14 @@
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_weight="1"
-            android:text="Löschen" />
+            android:text="Loeschen" />
     </LinearLayout>
 
     <ListView
         android:id="@+id/listView"
         android:layout_width="match_parent"
         android:layout_height="0dp"
-        android:background="#F9FAFB"
-        android:layout_weight="1" />
+        android:layout_weight="1"
+        android:background="#F9FAFB" />
 
 </LinearLayout>
