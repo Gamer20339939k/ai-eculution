@@ -507,6 +507,8 @@ def main() -> None:
             args.token = new_token
 
     git = find_git(root, args.git_exe or None)
+    if git:
+        args.git_exe = git
     if not args.repo and git:
         args.repo = parse_repo_from_origin(git, root) or ""
     if not args.repo:
