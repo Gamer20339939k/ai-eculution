@@ -498,6 +498,7 @@ def main() -> None:
     parser.add_argument("--out-dir", default="bin", help="Ausgabeordner f?r APK und ZIP")
     parser.add_argument("--no-download", action="store_true", help="Nicht auf die APK warten")
     parser.add_argument("--commit-msg", default="Add Android APK build files", help="Git Commit Nachricht")
+    parser.add_argument("--use-existing-project", action="store_true", help="Vorhandenes android-chaquopy Projekt nicht neu erzeugen")
     args = parser.parse_args()
 
     args.repo = args.repo or cfg.get("repo") or ""
@@ -523,12 +524,17 @@ def main() -> None:
 
     save_config(root, args.repo, args.git_exe, args.token)
 
-    src = Path(args.python_file).resolve() if args.python_file else pick_python_file(root)
+    existing_project = args.use_existing_project and (root / "android-chaquopy" / "app" / "src" / "main" / "AndroidManifest.xml").exists()
+    src = Path(args.python_file).resolve() if args.python_file else (pick_python_file(root) if not existing_project else root / "build.py")
     if not src.exists():
         raise SystemExit(f"Fehler: Datei nicht gefunden: {src}")
 
-    app_name = src.stem.replace("_", " ").replace("-", " ").strip().title() or "Python APK"
-    generated_paths = create_chaquopy_project(root, src, "com.example.apkbuilder", app_name)
+    if existing_project:
+        app_name = "Existing Android Project"
+        generated_paths = [root / "android-chaquopy"]
+    else:
+        app_name = src.stem.replace("_", " ").replace("-", " ").strip().title() or "Python APK"
+        generated_paths = create_chaquopy_project(root, src, "com.example.apkbuilder", app_name)
 
     workflow_filename, _, workflow_text = workflow_meta()
     workflow_path = root / ".github" / "workflows" / workflow_filename
@@ -537,7 +543,10 @@ def main() -> None:
     generated_paths.append(workflow_path)
 
     print("Fertig:")
-    print(f"- Gew?hlte Python-Datei: {src}")
+    if existing_project:
+        print("- Vorhandenes Android-Projekt wird verwendet")
+    else:
+        print(f"- Gew?hlte Python-Datei: {src}")
     print(f"- Workflow erstellt: {workflow_path}")
     print(f"- APK landet automatisch in: {root / args.out_dir}")
 
