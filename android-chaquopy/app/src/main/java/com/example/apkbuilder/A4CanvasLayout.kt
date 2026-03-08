@@ -1,4 +1,4 @@
-﻿package com.example.apkbuilder
+package com.example.apkbuilder
 
 import android.content.Context
 import android.graphics.Bitmap
